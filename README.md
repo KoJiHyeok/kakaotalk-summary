@@ -52,6 +52,28 @@ $env:WATCH_ENABLED="false"
 node src/server.js
 ```
 
+## Gemini 고급 요약 설정
+
+기본 동작은 기존 규칙 기반 요약입니다. Gemini API 키가 없거나 `GEMINI_ENABLED=true`가 아니면 Gemini 호출은 건너뛰며 앱은 정상 동작합니다.
+
+`.env.example`을 참고해 환경변수를 설정할 수 있습니다. 이 프로젝트는 `.env` 파일을 자동 로드하지 않으므로, PowerShell에서는 실행 전에 환경변수를 직접 지정합니다.
+
+```powershell
+$env:GEMINI_ENABLED="true"
+$env:GEMINI_API_KEY="your_gemini_api_key_here"
+$env:GEMINI_MODEL="gemini-2.5-flash"
+node src/server.js
+```
+
+지원 환경변수:
+
+- `GEMINI_ENABLED`: `true`일 때만 Gemini 호출 후보가 됩니다.
+- `GEMINI_API_KEY`: Google Gemini API 키입니다. 없으면 호출하지 않습니다.
+- `GEMINI_MODEL`: 기본값은 `gemini-2.5-flash`입니다.
+- `GEMINI_MAX_INPUT_CHARS`: Gemini 입력 프롬프트 최대 길이입니다. 기본값은 `20000`입니다.
+
+Gemini에는 원본 TXT 전체를 보내지 않습니다. 날짜, 메시지 수, 제외/파싱 실패 수, 규칙 기반 결론, 핵심 흐름, TOP 종목/자산, 종목별 요약 TOP 5, 체크포인트, 논쟁/리스크, 제한된 샘플 메시지 최대 50개만 전달합니다.
+
 테스트는 다음 명령으로 실행합니다.
 
 ```powershell
@@ -129,6 +151,7 @@ watch/failed/
 - 날짜별 Markdown 내보내기
 - 날짜별 TOP 종목/자산 CSV 내보내기
 - 전체 날짜 TOP 종목/자산 CSV 내보내기
+- 선택형 Gemini 고급 요약
 - 주의 사항 disclosure
 - 용어 보기 details
 - 로컬 `watch/` 폴더 자동 처리
@@ -180,6 +203,8 @@ samples/kakaotalk_sample.txt
 ## 현재 한계
 
 - 요약은 LLM이 아닌 규칙 기반 요약입니다.
+- Gemini 고급 요약은 환경변수로 켠 경우에만 추가 생성됩니다.
+- Gemini 호출 실패나 JSON 파싱 실패가 있어도 규칙 기반 요약은 저장됩니다.
 - 카카오톡 자동 수집 기능은 지원하지 않습니다. `watch/` 기능은 로컬 폴더 기반 자동 처리일 뿐입니다.
 - 카카오톡 크롤링, 보안 우회, 비공식 자동 읽기 기능은 포함하지 않습니다.
 - 이 결과는 실제 투자 조언이 아니라 채팅방 대화 요약입니다.

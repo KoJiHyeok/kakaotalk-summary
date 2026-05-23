@@ -70,6 +70,7 @@ function layout(title, body) {
     .summary-card.emphasis { background:#f8fbff; border-color:#bdd7ff; }
     .summary-title { margin:0 0 8px; font-size:14px; color:var(--muted); font-weight:700; }
     .summary-main { font-size:18px; line-height:1.72; margin:0; max-width:900px; }
+    .meta-small { color:var(--muted); font-size:12px; line-height:1.5; margin-top:8px; }
     .stats-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; max-width:100%; }
     .stat { border:1px solid var(--line); border-radius:8px; background:var(--soft); padding:14px; min-width:0; }
     .stat span { display:block; color:var(--muted); font-size:12px; margin-bottom:5px; }
@@ -563,6 +564,49 @@ function renderTopBadges(mentions, limit = 5) {
   return items.map((item) => badge(item.ticker, item.category, String(item.count || 0))).join(" ");
 }
 
+function renderGeminiSummary(geminiSummary) {
+  if (!geminiSummary) {
+    return `<p class="muted meta-small">Gemini 고급 요약이 비활성화되어 있습니다.</p>`;
+  }
+  if (geminiSummary.failed) {
+    return `<div class="summary-card">
+      <p class="summary-title">Gemini 고급 요약</p>
+      <p class="notice warning">Gemini 요약 생성 실패: ${escapeHtml(geminiSummary.error || "알 수 없는 오류")}</p>
+      <p class="meta-small">모델: ${escapeHtml(geminiSummary.model || "")} · 생성 시각: ${escapeHtml(geminiSummary.generatedAt || "")}</p>
+    </div>`;
+  }
+  if (geminiSummary.parseFailed) {
+    return `<div class="summary-card">
+      <p class="summary-title">Gemini 고급 요약</p>
+      <p class="notice warning">Gemini 응답 JSON 파싱에 실패했습니다. 원문 응답을 보관했습니다.</p>
+      <div class="soft-box"><code>${escapeHtml(geminiSummary.rawText || "")}</code></div>
+      <p class="meta-small">모델: ${escapeHtml(geminiSummary.model || "")} · 생성 시각: ${escapeHtml(geminiSummary.generatedAt || "")}</p>
+    </div>`;
+  }
+  const topics = Array.isArray(geminiSummary.keyTopics) ? geminiSummary.keyTopics : [];
+  const highlights = Array.isArray(geminiSummary.stockHighlights) ? geminiSummary.stockHighlights : [];
+  return `<div class="summary-card emphasis">
+    <p class="summary-title">Gemini 고급 요약</p>
+    <p class="summary-main">${escapeHtml(geminiSummary.executiveSummary || "Gemini 요약 내용이 없습니다.")}</p>
+    <p class="meta-small">시장 분위기: ${escapeHtml(geminiSummary.marketMood || "")} · 모델: ${escapeHtml(geminiSummary.model || "")} · 생성 시각: ${escapeHtml(geminiSummary.generatedAt || "")}</p>
+    <h3>핵심 주제</h3>
+    ${renderTextList(topics, "Gemini가 핵심 주제를 충분히 분리하지 못했습니다.")}
+    <h3>종목별 하이라이트</h3>
+    ${highlights.length ? `<div class="grid">${highlights.map((item) => `<div class="soft-box">
+      <strong>${escapeHtml(item.ticker || "UNKNOWN")}</strong>
+      <p>${escapeHtml(item.summary || "")}</p>
+      <p><strong>긍정:</strong> ${escapeHtml(item.positive || "")}</p>
+      <p><strong>부정:</strong> ${escapeHtml(item.negative || "")}</p>
+      <p><strong>리스크:</strong> ${escapeHtml(item.risk || "")}</p>
+      <p><strong>체크포인트:</strong> ${escapeHtml(item.checkpoint || "")}</p>
+    </div>`).join("")}</div>` : `<p class="muted">Gemini 종목별 하이라이트가 없습니다.</p>`}
+    <h3>리스크</h3>
+    ${renderTextList(geminiSummary.risks || [], "Gemini가 별도 리스크를 충분히 분리하지 못했습니다.")}
+    <h3>다음 체크포인트</h3>
+    ${renderTextList(geminiSummary.nextCheckpoints || [], "Gemini가 다음 체크포인트를 충분히 분리하지 못했습니다.")}
+  </div>`;
+}
+
 function renderDateNav(row) {
   const siblings = storage.getSummariesByUpload(row.uploadId);
   const index = siblings.findIndex((item) => item.id === row.id);
@@ -656,10 +700,8 @@ function renderDetail(summaryId) {
         <p class="summary-main">${escapeHtml(conclusion)}</p>
       </div>
 
-      <div class="summary-card">
-        <p class="summary-title">TOP 종목 5개</p>
-        <div>${renderTopBadges(topStocks, 5)}</div>
-      </div>
+      ${renderGeminiSummary(summary.geminiSummary)}
+
     </section>
 
     <section>
@@ -679,7 +721,6 @@ function renderDetail(summaryId) {
       <span class="section-kicker">SECTION 03</span>
       <h3>다음 거래일 체크포인트</h3>
       <div class="soft-box">${renderFlexibleList(sections.nextCheckPoints || [], "다음 거래일 체크 포인트가 명확히 언급되지 않았습니다.")}</div>
-      ${renderGlossaryDetails()}
       </div>
 
       <div class="section-card">
@@ -720,6 +761,8 @@ function renderDetail(summaryId) {
         <div class="details-body">${renderMessageList(sections.riskWarnings || sections.risks || [], "과열, 고점 우려, 실적 리스크 등 명확한 리스크 표현이 제한적입니다.")}</div>
       </details>
       </div>
+
+      ${renderGlossaryDetails()}
 
       <p class="notice warning">이 내용은 투자 조언이 아니라 카카오톡 채팅방 대화 요약입니다.</p>
     </section>

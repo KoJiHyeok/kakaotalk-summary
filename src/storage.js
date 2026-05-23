@@ -101,6 +101,7 @@ function normalizeSummaryRow(row) {
         nextCheckPoints: [],
         conclusion
       },
+      geminiSummary: summary.geminiSummary ?? null,
       errorMessage: summary.errorMessage,
       errorStack: summary.errorStack
     }

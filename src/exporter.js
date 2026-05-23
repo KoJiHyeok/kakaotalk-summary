@@ -81,6 +81,58 @@ function renderStockDetails(details) {
   ].join("\n")).join("\n\n");
 }
 
+function renderGeminiMarkdown(geminiSummary) {
+  if (!geminiSummary) return "";
+  if (geminiSummary.failed) {
+    return [
+      "## Gemini 고급 요약",
+      `- 생성 실패: ${value(geminiSummary.error, "알 수 없는 오류")}`,
+      ""
+    ].join("\n");
+  }
+  if (geminiSummary.parseFailed) {
+    return [
+      "## Gemini 고급 요약",
+      "- JSON 파싱에 실패해 원문 응답을 보관했습니다.",
+      "",
+      "```text",
+      value(geminiSummary.rawText, ""),
+      "```",
+      ""
+    ].join("\n");
+  }
+  const highlights = asArray(geminiSummary.stockHighlights).map((item) => [
+    `### ${value(item.ticker, "UNKNOWN")}`,
+    `- 요약: ${value(item.summary)}`,
+    `- 긍정: ${value(item.positive)}`,
+    `- 부정: ${value(item.negative)}`,
+    `- 리스크: ${value(item.risk)}`,
+    `- 체크포인트: ${value(item.checkpoint)}`
+  ].join("\n")).join("\n\n");
+  return [
+    "## Gemini 고급 요약",
+    `- 모델: ${value(geminiSummary.model)}`,
+    `- 생성 시각: ${value(geminiSummary.generatedAt)}`,
+    `- 시장 분위기: ${value(geminiSummary.marketMood)}`,
+    "",
+    "### Executive Summary",
+    value(geminiSummary.executiveSummary, "Gemini 요약 내용이 없습니다."),
+    "",
+    "### 핵심 주제",
+    bulletList(geminiSummary.keyTopics),
+    "",
+    "### 종목별 하이라이트",
+    highlights || "- 종목별 Gemini 하이라이트가 없습니다.",
+    "",
+    "### Gemini 리스크",
+    bulletList(geminiSummary.risks),
+    "",
+    "### Gemini 다음 체크포인트",
+    bulletList(geminiSummary.nextCheckpoints),
+    ""
+  ].join("\n");
+}
+
 function createMarkdownExport(row, upload = {}) {
   const summary = row?.summary || {};
   const sections = summary.sections || {};
@@ -102,6 +154,7 @@ function createMarkdownExport(row, upload = {}) {
     "## 한 줄 결론",
     conclusion,
     "",
+    renderGeminiMarkdown(summary.geminiSummary),
     "## 오늘의 핵심 흐름 3가지",
     bulletList(asArray(sections.keyFlows).slice(0, 3)),
     "",

@@ -1,5 +1,6 @@
 const { parseKakaoTalkTxt, groupMessagesByDate } = require("./parser");
 const { generateDailySummary } = require("./summarizer");
+const { enhanceSummaryWithGemini } = require("./geminiSummarizer");
 const storage = require("./storage");
 
 function countByDate(messages) {
@@ -56,21 +57,25 @@ async function processTxtContent({
   const systemCounts = countByDate(parseResult.systemMessages || []);
   const allDates = Array.from(new Set((parseResult.allMessages || []).map((message) => message.date).filter(Boolean))).sort();
 
-  const dailySummaries = allDates.map((date) => {
+  const dailySummaries = await Promise.all(allDates.map(async (date) => {
     const messages = grouped[date] || [];
     const counts = {
       mediaMessageCount: mediaCounts[date] || 0,
       systemMessageCount: systemCounts[date] || 0
     };
     try {
-      return generateDailySummary(date, messages, counts);
+      const summary = generateDailySummary(date, messages, counts);
+      return await enhanceSummaryWithGemini(summary, {
+        messages,
+        parseStats: parseResult.stats
+      });
     } catch (error) {
       if (typeof onDailyError === "function") {
         onDailyError(error, { date, messageCount: messages.length, counts });
       }
-      return createFailedDailySummary(date, messages, counts, error);
+      return { ...createFailedDailySummary(date, messages, counts, error), geminiSummary: null };
     }
-  });
+  }));
 
   return storage.saveUploadResult({
     originalFilename,
