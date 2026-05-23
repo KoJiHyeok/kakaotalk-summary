@@ -86,6 +86,89 @@ Gemini를 켜고 실행하려면 다음 스크립트를 사용합니다.
 - `start-app.bat`: 기본 규칙 기반 실행
 - `start-gemini-app.bat`: Gemini 활성화 실행
 
+## Windows 시작 시 자동 실행
+
+Windows 시작프로그램 폴더에 바로가기를 등록하면 PC를 켤 때 앱을 자동으로 실행할 수 있습니다. 이 프로젝트는 자동으로 시작프로그램을 등록하지 않습니다. 필요할 때 아래 스크립트를 직접 실행하세요.
+
+시작프로그램 폴더:
+
+```text
+%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+```
+
+기본 규칙 기반 실행을 자동 등록:
+
+```powershell
+.\install-startup.ps1
+```
+
+또는 배치 파일을 더블클릭합니다.
+
+```text
+install-startup.bat
+```
+
+Gemini 실행을 자동 등록:
+
+```powershell
+.\install-startup.ps1 -Gemini
+```
+
+또는 명령 프롬프트에서 다음처럼 실행합니다.
+
+```bat
+install-startup.bat gemini
+```
+
+자동 실행 해제:
+
+```powershell
+.\uninstall-startup.ps1
+```
+
+Gemini 자동 실행 바로가기 해제:
+
+```powershell
+.\uninstall-startup.ps1 -Target Gemini
+```
+
+둘 다 해제:
+
+```powershell
+.\uninstall-startup.ps1 -Target All
+```
+
+배치 파일로 해제:
+
+```bat
+uninstall-startup.bat
+uninstall-startup.bat gemini
+uninstall-startup.bat all
+```
+
+생성되는 바로가기 이름:
+
+- `KakaoTalk Stock Summary.lnk`
+- `KakaoTalk Stock Summary Gemini.lnk`
+
+`start-app.bat`와 `start-gemini-app.bat` 차이:
+
+- `start-app.bat`: `GEMINI_ENABLED=false`로 기본 규칙 기반 요약만 사용합니다.
+- `start-gemini-app.bat`: `GEMINI_ENABLED=true`로 실행합니다. API 키는 스크립트에 저장하지 않고 `.env` 또는 Windows 환경변수에서 읽습니다.
+
+자동 실행 등록 후 확인 방법:
+
+1. PC를 재부팅합니다.
+2. 브라우저에서 `http://localhost:3000`을 엽니다.
+3. 홈 화면과 `/watch` 페이지가 열리는지 확인합니다.
+4. `watch/` 폴더에 TXT 파일을 넣어 자동 처리되는지 확인합니다.
+
+API 키 보안:
+
+- Gemini API 키는 `.env` 또는 Windows 사용자 환경변수에만 저장하세요.
+- `.env`는 `.gitignore`에 포함되어 있으며 Git에 커밋하면 안 됩니다.
+- `start-gemini-app.bat`, `start-gemini-app.ps1`, `install-startup` 스크립트에 API 키를 직접 쓰지 마세요.
+
 감시 기능을 끄고 실행하려면 다음처럼 지정합니다.
 
 ```powershell

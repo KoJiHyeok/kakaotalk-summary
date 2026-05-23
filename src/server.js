@@ -253,6 +253,7 @@ function renderHome(message = "") {
         </a>
       </div>
       <p class="muted">서버 주소: http://localhost:${PORT} · Gemini: ${canUseGemini(geminiConfig) ? "활성" : "비활성"} · 모델: ${escapeHtml(geminiConfig.model)}</p>
+      <p class="muted">Windows 시작 시 자동 실행은 README의 install-startup 스크립트 안내를 참고하세요.</p>
     </section>
     ${renderLatestWatchSummaryCard(watchStatus)}
     <section>
@@ -548,6 +549,7 @@ function renderWatchStatus() {
         <p><strong>처리 완료:</strong> 성공한 파일은 watch/processed 폴더로 이동합니다.</p>
         <p><strong>처리 실패:</strong> 실패한 파일은 watch/failed 폴더로 이동하고 실패 이유를 기록합니다.</p>
         <p><strong>중복 파일:</strong> 이미 처리한 파일은 skipped_duplicate 상태로 기록합니다.</p>
+        <p class="muted">Windows 시작 시 자동 실행은 README의 install-startup 스크립트 안내를 참고하세요.</p>
       </div>
       ${renderWatchLatestResult(status)}
       <div class="stats-grid">
