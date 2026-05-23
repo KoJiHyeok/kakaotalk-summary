@@ -3,6 +3,13 @@ const path = require("path");
 const { categorizeTicker } = require("./analyzer");
 const { processTxtContent } = require("./processor");
 const { getWatchStatus, startWatchFolder } = require("./watchService");
+const {
+  createMarkdownExport,
+  createTopMentionsCsv,
+  createAllTopMentionsCsv,
+  markdownFilename,
+  csvFilename
+} = require("./exporter");
 const storage = require("./storage");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -69,6 +76,7 @@ function layout(title, body) {
     .stat strong { font-size:20px; overflow-wrap:anywhere; }
     .button-row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 16px; }
     .button.secondary { background:#475569; }
+    .button.outline { background:#fff; color:#1f2937; border:1px solid var(--line); }
     .button.disabled { background:#cbd5e1; color:#64748b; pointer-events:none; }
     .soft-box { background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:14px 16px; line-height:1.65; }
     details { border:1px solid var(--line); border-radius:8px; background:#fff; padding:0; margin:16px 0; }
@@ -171,6 +179,15 @@ function layout(title, body) {
 function response(res, statusCode, html) {
   res.writeHead(statusCode, { "Content-Type": "text/html; charset=utf-8" });
   res.end(html);
+}
+
+function downloadResponse(res, filename, contentType, content) {
+  res.writeHead(200, {
+    "Content-Type": `${contentType}; charset=utf-8`,
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store"
+  });
+  res.end(content);
 }
 
 function redirect(res, location) {
@@ -404,7 +421,11 @@ function renderSummaryCards(summaries) {
         </div>
         <div class="digest-badges">${renderMentionBadges(row.topMentions, 8)}</div>
         <p class="digest-conclusion">${escapeHtml(row.conclusion || "한 줄 결론이 없습니다.")}</p>
-        <div class="digest-actions"><a class="button" href="/summaries/${row.id}">상세 보기</a></div>
+        <div class="digest-actions button-row">
+          <a class="button" href="/summaries/${row.id}">상세 보기</a>
+          <a class="button outline" href="/summaries/${row.id}/export.md">Markdown</a>
+          <a class="button outline" href="/summaries/${row.id}/top-mentions.csv">CSV</a>
+        </div>
       </article>`;
     }).join("")}
   </div>`;
@@ -428,6 +449,9 @@ function renderSummaries() {
           <button type="button" class="chip" data-summary-filter="crypto">크립토 ${counts.crypto}</button>
           <button type="button" class="chip" data-summary-filter="macro">매크로 ${counts.macro}</button>
           <button type="button" class="chip" data-summary-filter="risk">리스크 ${counts.risk}</button>
+        </div>
+        <div class="button-row">
+          <a class="button outline" href="/summaries/export/top-mentions.csv">전체 TOP 종목 CSV 다운로드</a>
         </div>
       </div>
       <div class="no-results" data-summary-empty>검색 결과가 없습니다</div>
@@ -605,6 +629,10 @@ function renderDetail(summaryId) {
 
   return layout(`${summary.date || row.date} 요약`, `
     ${renderDateNav(row)}
+    <div class="button-row">
+      <a class="button outline" href="/summaries/${row.id}/export.md">Markdown 다운로드</a>
+      <a class="button outline" href="/summaries/${row.id}/top-mentions.csv">CSV 다운로드</a>
+    </div>
 
     <section class="report-hero">
       <div class="title-row">
@@ -829,6 +857,30 @@ async function handleUpload(req, res) {
   }
 }
 
+function handleSummaryExport(res, summaryId, format) {
+  const row = storage.getSummary(summaryId);
+  if (!row) {
+    response(res, 404, layout("404", `<section><h2>요약을 찾을 수 없습니다.</h2></section>`));
+    return;
+  }
+  const upload = storage.getUpload(row.uploadId) || {};
+  if (format === "markdown") {
+    downloadResponse(res, markdownFilename(row), "text/markdown", createMarkdownExport(row, upload));
+    return;
+  }
+  downloadResponse(res, csvFilename(row), "text/csv", createTopMentionsCsv(row));
+}
+
+function handleAllTopMentionsExport(res) {
+  const summaries = latestSummariesByDate(storage.listSummaries());
+  downloadResponse(
+    res,
+    "kakaotalk-stock-top-mentions-all.csv",
+    "text/csv",
+    createAllTopMentionsCsv(summaries)
+  );
+}
+
 async function router(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -837,6 +889,11 @@ async function router(req, res) {
   if (req.method === "GET" && url.pathname === "/watch") return response(res, 200, renderWatchStatus());
   if (req.method === "GET" && url.pathname.startsWith("/uploads/")) return response(res, 200, renderUploadDetail(url.pathname.split("/")[2]));
   if (req.method === "GET" && url.pathname === "/summaries") return response(res, 200, renderSummaries());
+  if (req.method === "GET" && url.pathname === "/summaries/export/top-mentions.csv") return handleAllTopMentionsExport(res);
+  const exportMatch = url.pathname.match(/^\/summaries\/([^/]+)\/(export\.md|top-mentions\.csv)$/);
+  if (req.method === "GET" && exportMatch) {
+    return handleSummaryExport(res, exportMatch[1], exportMatch[2] === "export.md" ? "markdown" : "csv");
+  }
   if (req.method === "GET" && url.pathname.startsWith("/summaries/")) return response(res, 200, renderDetail(url.pathname.split("/")[2]));
   if (req.method === "POST" && url.pathname === "/upload") return handleUpload(req, res);
 

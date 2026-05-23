@@ -126,6 +126,9 @@ watch/failed/
 - 필터 칩으로 종목, ETF/레버리지, 크립토, 매크로, 리스크 필터링
 - 상세 리포트 페이지
 - SECTION 01~06 리포트 구조
+- 날짜별 Markdown 내보내기
+- 날짜별 TOP 종목/자산 CSV 내보내기
+- 전체 날짜 TOP 종목/자산 CSV 내보내기
 - 주의 사항 disclosure
 - 용어 보기 details
 - 로컬 `watch/` 폴더 자동 처리
@@ -188,7 +191,7 @@ samples/kakaotalk_sample.txt
 - LLM 요약 API 연동
 - 매일 자동 실행 또는 스케줄링
 - 파일 감시 폴더 방식 업로드
-- 날짜별 Markdown/CSV 내보내기
+- 내보내기 파일 템플릿 커스터마이징
 - 원문 근거 메시지 보기
 - 시간대 필터
 - 티커/한국어 별칭 사전 확장
