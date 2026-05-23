@@ -4,11 +4,23 @@ const crypto = require("crypto");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
+const VALID_RATINGS = new Set(["good", "mixed", "bad"]);
+const VALID_GEMINI_RATINGS = new Set(["good", "mixed", "bad", "not_used"]);
+
+function currentStorePath() {
+  return process.env.KAKAO_SUMMARY_STORE_PATH ? path.resolve(process.env.KAKAO_SUMMARY_STORE_PATH) : STORE_PATH;
+}
+
+function currentDataDir() {
+  return path.dirname(currentStorePath());
+}
 
 function ensureStore() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(STORE_PATH)) {
-    fs.writeFileSync(STORE_PATH, JSON.stringify({ uploads: [], summaries: [] }, null, 2), "utf8");
+  const dataDir = currentDataDir();
+  const storePath = currentStorePath();
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  if (!fs.existsSync(storePath)) {
+    fs.writeFileSync(storePath, JSON.stringify({ uploads: [], summaries: [], feedbacks: [] }, null, 2), "utf8");
   }
 }
 
@@ -112,22 +124,43 @@ function normalizeSummaryRow(row) {
   };
 }
 
+function normalizeRating(value, allowed = VALID_RATINGS, fallback = "mixed") {
+  return allowed.has(value) ? value : fallback;
+}
+
+function normalizeFeedback(record) {
+  const now = new Date().toISOString();
+  return {
+    summaryId: record.summaryId || "",
+    date: record.date || "",
+    overallRating: normalizeRating(record.overallRating),
+    tickerRating: normalizeRating(record.tickerRating),
+    conclusionRating: normalizeRating(record.conclusionRating),
+    checkpointRating: normalizeRating(record.checkpointRating),
+    geminiRating: normalizeRating(record.geminiRating, VALID_GEMINI_RATINGS, "not_used"),
+    note: String(record.note || "").slice(0, 2000),
+    createdAt: record.createdAt || now,
+    updatedAt: record.updatedAt || record.createdAt || now
+  };
+}
+
 function normalizeStore(store) {
   return {
     uploads: Array.isArray(store.uploads) ? store.uploads.map(normalizeUpload) : [],
     summaries: Array.isArray(store.summaries) ? store.summaries.map(normalizeSummaryRow) : [],
-    watchFiles: Array.isArray(store.watchFiles) ? store.watchFiles.map(normalizeWatchFile) : []
+    watchFiles: Array.isArray(store.watchFiles) ? store.watchFiles.map(normalizeWatchFile) : [],
+    feedbacks: Array.isArray(store.feedbacks) ? store.feedbacks.map(normalizeFeedback) : []
   };
 }
 
 function readStore() {
   ensureStore();
-  return normalizeStore(JSON.parse(fs.readFileSync(STORE_PATH, "utf8")));
+  return normalizeStore(JSON.parse(fs.readFileSync(currentStorePath(), "utf8")));
 }
 
 function writeStore(store) {
   ensureStore();
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+  fs.writeFileSync(currentStorePath(), JSON.stringify(store, null, 2), "utf8");
 }
 
 function saveUploadResult({ originalFilename, parseResult, dailySummaries, source = "web_upload", sourcePath = "", watchFingerprint = "" }) {
@@ -221,6 +254,42 @@ function recordWatchFile(record) {
   return normalized;
 }
 
+function saveSummaryFeedback(summaryId, feedback) {
+  const store = readStore();
+  const summary = store.summaries.find((item) => item.id === summaryId);
+  if (!summary) throw new Error(`Summary not found: ${summaryId}`);
+  const index = store.feedbacks.findIndex((item) => item.summaryId === summaryId);
+  const existing = index >= 0 ? store.feedbacks[index] : null;
+  const now = new Date().toISOString();
+  const normalized = normalizeFeedback({
+    ...(existing || {}),
+    ...feedback,
+    summaryId,
+    date: summary.date,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  });
+  if (index >= 0) store.feedbacks[index] = normalized;
+  else store.feedbacks.unshift(normalized);
+  writeStore(store);
+  return normalized;
+}
+
+function updateSummaryFeedback(summaryId, feedback) {
+  return saveSummaryFeedback(summaryId, feedback);
+}
+
+function getSummaryFeedback(summaryId) {
+  return readStore().feedbacks.find((feedback) => feedback.summaryId === summaryId) || null;
+}
+
+function listSummaryFeedback() {
+  return readStore().feedbacks.sort((a, b) =>
+    String(b.date).localeCompare(String(a.date)) ||
+    String(b.updatedAt).localeCompare(String(a.updatedAt))
+  );
+}
+
 module.exports = {
   DATA_DIR,
   STORE_PATH,
@@ -232,5 +301,10 @@ module.exports = {
   getSummary,
   listWatchFiles,
   hasProcessedWatchFile,
-  recordWatchFile
+  recordWatchFile,
+  saveSummaryFeedback,
+  updateSummaryFeedback,
+  getSummaryFeedback,
+  listSummaryFeedback,
+  normalizeFeedback
 };
