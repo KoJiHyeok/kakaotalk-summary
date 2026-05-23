@@ -1,0 +1,14 @@
+{
+  "name": "kakaotalk-us-stock-chat-summary",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KakaoTalk exported TXT uploader and daily US stock chat summary MVP.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
