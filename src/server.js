@@ -37,7 +37,26 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-function layout(title, body) {
+const NAV_ITEMS = [
+  ["/", "홈", ["TXT 업로드"]],
+  ["/#upload", "업로드", []],
+  ["/summaries", "날짜별 요약", ["날짜별 요약", "요약 없음"]],
+  ["/watch", "감시 폴더", ["감시 폴더 상태"]],
+  ["/tickers", "종목 추이", ["종목/자산 언급 추이", "언급 추이", "티커 없음"]],
+  ["/analytics", "분석 대시보드", ["분석 대시보드"]],
+  ["/feedback", "피드백", ["요약 피드백"]],
+  ["/collectors", "수집 방식", ["Collector 상태"]],
+  ["/uploads", "업로드 기록", ["업로드 기록", "업로드 결과", "업로드 없음"]]
+];
+
+function activeNavHref(title, options = {}) {
+  if (options.activePath) return options.activePath;
+  const match = NAV_ITEMS.find(([, , titleHints]) => titleHints.some((hint) => String(title || "").includes(hint)));
+  return match ? match[0] : "/";
+}
+
+function renderLayout(title, body, options = {}) {
+  const activeHref = activeNavHref(title, options);
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -45,13 +64,15 @@ function layout(title, body) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
   <style>
-    :root { color-scheme: light; --ink:#17202a; --muted:#667085; --line:#d8dee8; --bg:#f7f8fb; --panel:#fff; --accent:#1f6feb; --danger:#b42318; --soft:#f4f7fb; }
+    :root { color-scheme: light; --ink:#17202a; --muted:#667085; --line:#d8dee8; --bg:#f7f8fb; --panel:#fff; --accent:#1f6feb; --danger:#b42318; --soft:#f4f7fb; --green:#16a34a; --orange:#ea580c; --purple:#7c3aed; --indigo:#4f46e5; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Arial, "Malgun Gothic", sans-serif; color:var(--ink); background:var(--bg); }
-    header { background:#111827; color:#fff; padding:18px 24px; }
+    header { background:#111827; color:#fff; padding:18px 24px; box-shadow:0 10px 32px rgba(15,23,42,.18); }
     header h1 { margin:0; font-size:20px; letter-spacing:0; }
-    nav { margin-top:10px; display:flex; gap:12px; flex-wrap:wrap; }
-    nav a { color:#dbeafe; text-decoration:none; font-size:14px; }
+    nav { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
+    nav a { color:#dbeafe; text-decoration:none; font-size:14px; border:1px solid transparent; border-radius:999px; padding:7px 10px; }
+    nav a:hover, nav a:focus { background:#1f2937; border-color:#334155; outline:none; }
+    nav a.active { background:#fff; color:#111827; border-color:#fff; font-weight:800; }
     main { max-width:1120px; width:100%; margin:0 auto; padding:28px 24px; overflow-x:hidden; }
     section, .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:24px; margin-bottom:22px; max-width:100%; overflow-x:hidden; }
     h2 { margin:0 0 14px; font-size:20px; }
@@ -66,7 +87,8 @@ function layout(title, body) {
     select, textarea { border:1px solid var(--line); border-radius:8px; padding:10px; font-family:inherit; font-size:14px; background:#fff; max-width:100%; }
     textarea { width:100%; min-height:110px; resize:vertical; line-height:1.6; }
     label { display:grid; gap:6px; font-weight:700; }
-    button, .button { border:0; background:var(--accent); color:#fff; padding:10px 14px; border-radius:7px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:14px; }
+    button, .button { border:0; background:var(--accent); color:#fff; padding:10px 14px; border-radius:7px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:6px; font-size:14px; font-weight:700; }
+    button:hover, .button:hover, button:focus, .button:focus { filter:brightness(.96); outline:3px solid rgba(31,111,235,.18); outline-offset:2px; }
     table { width:100%; min-width:680px; border-collapse:collapse; margin-top:10px; background:#fff; }
     .table-wrapper { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
     th, td { border-bottom:1px solid var(--line); padding:13px 12px; text-align:left; vertical-align:top; line-height:1.55; }
@@ -76,15 +98,23 @@ function layout(title, body) {
     .warning { border-left-color:var(--danger); background:#fff3f0; }
     .list { margin:8px 0 0; padding-left:18px; }
     .list li { margin:8px 0; line-height:1.62; max-width:900px; }
-    .tag, .badge { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:4px 9px; margin:2px; font-size:12px; background:#fff; font-weight:700; }
+    .tag, .badge { display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:999px; padding:4px 9px; margin:2px; font-size:12px; background:#fff; font-weight:800; line-height:1.2; white-space:nowrap; }
     .badge-stock { background:#eef6ff; border-color:#b8d7ff; color:#1759a6; }
     .badge-etf { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
     .badge-crypto { background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
     .badge-macro { background:#f5f3ff; border-color:#ddd6fe; color:#5b21b6; }
+    .badge-risk { background:#fff1f2; border-color:#fecdd3; color:#be123c; }
+    .badge-gemini { background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
+    .badge-neutral { background:#f8fafc; border-color:#cbd5e1; color:#475569; }
     .badge-unknown { background:#f8fafc; border-color:#cbd5e1; color:#475569; }
     .report-hero { display:grid; gap:18px; max-width:100%; overflow-x:hidden; }
+    .page-header { display:grid; gap:14px; margin-bottom:18px; }
+    .page-header-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+    .page-title { margin:0; font-size:26px; line-height:1.25; }
+    .page-subtitle { margin:8px 0 0; color:var(--muted); max-width:760px; }
     .summary-card { border:1px solid var(--line); border-radius:8px; background:#fff; padding:20px; min-width:0; }
     .summary-card.emphasis { background:#f8fbff; border-color:#bdd7ff; }
+    .summary-card.gemini-emphasis { background:linear-gradient(180deg,#f8f7ff 0%,#fff 100%); border-color:#c7d2fe; box-shadow:0 12px 32px rgba(79,70,229,.09); }
     .summary-title { margin:0 0 8px; font-size:14px; color:var(--muted); font-weight:700; }
     .summary-main { font-size:18px; line-height:1.72; margin:0; max-width:900px; }
     .meta-small { color:var(--muted); font-size:12px; line-height:1.5; margin-top:8px; }
@@ -112,6 +142,7 @@ function layout(title, body) {
     .title-row .notice-disclosure { flex:0 0 auto; margin:0; position:relative; }
     .title-row .notice-modal { position:absolute; right:0; top:calc(100% + 8px); z-index:20; width:min(520px, calc(100vw - 48px)); margin-top:0; }
     .digest-toolbar { display:grid; gap:14px; margin:16px 0 18px; }
+    .toolbar-card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; }
     .search-input { width:100%; border:1px solid var(--line); border-radius:999px; padding:12px 16px; font-size:15px; background:#fff; }
     .filter-chips { display:flex; flex-wrap:wrap; gap:8px; }
     .chip { border:1px solid var(--line); border-radius:999px; padding:8px 12px; background:#fff; color:#334155; cursor:pointer; font-weight:700; }
@@ -119,11 +150,13 @@ function layout(title, body) {
     .no-results { display:none; border:1px dashed var(--line); border-radius:8px; padding:18px; color:var(--muted); background:#fff; }
     .summary-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; max-width:100%; }
     .digest-card { border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; min-width:0; box-shadow:0 1px 0 rgba(15,23,42,.03); }
+    .digest-card:hover { border-color:#b6c2d3; box-shadow:0 12px 30px rgba(15,23,42,.08); }
     .digest-card-header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
     .digest-date { font-size:18px; font-weight:800; }
     .digest-meta { display:flex; flex-wrap:wrap; gap:7px; color:var(--muted); font-size:13px; margin:8px 0 12px; }
     .digest-badges { display:flex; flex-wrap:wrap; gap:4px; margin:10px 0 12px; }
     .digest-conclusion { background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:12px; line-height:1.68; margin:12px 0; max-width:none; }
+    .line-clamp { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
     .digest-actions { margin-top:14px; }
     .quick-card { display:block; border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; text-decoration:none; color:var(--ink); min-height:120px; }
     .quick-card strong { display:block; font-size:17px; margin-bottom:8px; }
@@ -145,11 +178,24 @@ function layout(title, body) {
     .bar-chart { display:grid; gap:10px; margin:14px 0; }
     .bar-row { display:grid; grid-template-columns:96px minmax(0, 1fr) 48px; gap:10px; align-items:center; }
     .bar-track { height:18px; background:#eef2f7; border:1px solid var(--line); border-radius:999px; overflow:hidden; min-width:0; }
-    .bar-fill { height:100%; background:#1f6feb; border-radius:999px; min-width:4px; }
+    .bar-fill { height:100%; background:linear-gradient(90deg,#1f6feb,#60a5fa); border-radius:999px; min-width:4px; }
     .bar-count { text-align:right; font-weight:700; }
     .section-card { border:1px solid var(--line); border-radius:8px; background:#fff; padding:22px; margin:18px 0; box-shadow:0 1px 0 rgba(15,23,42,.03); }
-    .section-kicker { display:block; color:var(--accent); font-size:12px; font-weight:800; letter-spacing:.04em; margin-bottom:6px; }
+    .section-card.digest-section { display:grid; grid-template-columns:230px minmax(0, 1fr); gap:24px; align-items:start; }
+    .section-card.gemini-section { border-color:#c7d2fe; background:linear-gradient(180deg,#f8f7ff 0%,#fff 55%); }
+    .section-kicker { display:block; color:var(--accent); font-size:12px; font-weight:900; letter-spacing:.04em; margin-bottom:6px; }
     .section-card h3 { margin-top:0; }
+    .section-meta { display:grid; gap:8px; color:var(--muted); font-size:13px; }
+    .section-meta-row { border-top:1px solid var(--line); padding-top:8px; }
+    .section-meta-row:first-child { border-top:0; padding-top:0; }
+    .section-body { min-width:0; }
+    .section-summary { font-size:17px; line-height:1.75; margin:0 0 14px; max-width:850px; }
+    .asset-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+    .asset-card { border:1px solid var(--line); border-radius:8px; background:#fbfcff; padding:14px; min-width:0; }
+    .asset-card h4 { margin:0 0 8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .asset-card p { margin:8px 0; max-width:none; line-height:1.6; }
+    .mini-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; }
+    .mini-card { border:1px solid var(--line); border-radius:8px; background:#f8fafc; padding:13px; line-height:1.62; min-width:0; }
     .glossary-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
     .glossary-item { border:1px solid var(--line); background:#f8fafc; border-radius:8px; padding:12px; line-height:1.55; }
     .glossary-item strong { display:block; margin-bottom:4px; }
@@ -162,6 +208,7 @@ function layout(title, body) {
       .title-row { gap:10px; }
       .title-row .notice-modal { width:calc(100vw - 28px); }
       .stats-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+      .section-card.digest-section { grid-template-columns:1fr; gap:14px; }
       .ticker-row { grid-template-columns:1fr; }
       .bar-row { grid-template-columns:82px minmax(0, 1fr) 40px; }
       table { font-size:14px; }
@@ -173,14 +220,7 @@ function layout(title, body) {
   <header>
     <h1>카카오톡 미국주식 오픈채팅방 요약 MVP</h1>
     <nav>
-      <a href="/">업로드</a>
-      <a href="/summaries">날짜별 요약</a>
-      <a href="/tickers">종목 추이</a>
-      <a href="/analytics">분석 대시보드</a>
-      <a href="/feedback">요약 피드백</a>
-      <a href="/collectors">수집 방식</a>
-      <a href="/uploads">업로드 기록</a>
-      <a href="/watch">감시 폴더</a>
+      ${NAV_ITEMS.map(([href, label]) => `<a href="${href}" class="${href === activeHref ? "active" : ""}">${label}</a>`).join("")}
     </nav>
   </header>
   <main>${body}</main>
@@ -220,6 +260,10 @@ function layout(title, body) {
   </script>
 </body>
 </html>`;
+}
+
+function layout(title, body, options = {}) {
+  return renderLayout(title, body, options);
 }
 
 function response(res, statusCode, html) {
@@ -263,6 +307,41 @@ function renderNoticeDisclosure() {
       <p class="muted">닫으려면 위의 주의 사항 버튼을 다시 누르세요.</p>
     </div>
   </details>`;
+}
+
+function renderPageHeader(title, subtitle = "", actions = "", options = {}) {
+  return `<div class="page-header ${options.className || ""}">
+    <div class="page-header-top">
+      <div>
+        <h2 class="page-title">${escapeHtml(title)}</h2>
+        ${subtitle ? `<p class="page-subtitle">${escapeHtml(subtitle)}</p>` : ""}
+      </div>
+      ${actions ? `<div class="button-row">${actions}</div>` : ""}
+    </div>
+  </div>`;
+}
+
+function renderBadge(label, type = "neutral", extra = "") {
+  return `<span class="badge badge-${escapeHtml(type || "neutral")}">${escapeHtml(label)}${extra ? ` ${escapeHtml(extra)}` : ""}</span>`;
+}
+
+function renderSectionCard(sectionNo, title, meta = [], body = "", options = {}) {
+  const metaItems = Array.isArray(meta) ? meta : [];
+  const kicker = sectionNo ? `SECTION ${String(sectionNo).padStart(2, "0")}` : options.kicker || "SECTION";
+  const metaHtml = metaItems.length
+    ? `<aside class="section-meta">
+        ${metaItems.map((item) => `<div class="section-meta-row"><strong>${escapeHtml(item.label)}</strong><br>${item.html ? item.value : escapeHtml(item.value ?? "-")}</div>`).join("")}
+      </aside>`
+    : `<aside class="section-meta"><div class="section-meta-row"><strong>분야</strong><br>${escapeHtml(title)}</div></aside>`;
+  return `<div class="section-card digest-section ${options.className || ""}"${options.id ? ` id="${escapeHtml(options.id)}"` : ""}>
+    ${metaHtml}
+    <div class="section-body">
+      <span class="section-kicker">${escapeHtml(kicker)}</span>
+      <h3>${escapeHtml(title)}</h3>
+      ${options.summary ? `<p class="section-summary">${escapeHtml(options.summary)}</p>` : ""}
+      ${body}
+    </div>
+  </div>`;
 }
 
 function renderHome(message = "") {
@@ -315,7 +394,7 @@ function renderHome(message = "") {
     </section>
     ${renderTodaySummaryStatusCard(todayStatus, watchStatus.watchDir)}
     ${renderLatestWatchSummaryCard(watchStatus)}
-    <section>
+    <section id="upload">
       <h2>TXT 파일 업로드</h2>
       ${message}
       <form action="/upload" method="post" enctype="multipart/form-data">
@@ -588,6 +667,9 @@ function renderSummaryCards(summaries) {
   return `<div class="summary-card-grid">
     ${summaries.map((row) => {
       const sentiment = row.summary?.sections?.marketMood?.sentiment || "미분류";
+      const gemini = row.summary?.geminiSummary;
+      const geminiLabel = gemini?.failed ? "Gemini 실패" : gemini ? "Gemini 포함" : "규칙 기반";
+      const geminiType = gemini?.failed ? "risk" : gemini ? "gemini" : "neutral";
       return `<article class="digest-card" data-summary-row data-search="${escapeHtml(summarySearchText(row))}" data-categories="${escapeHtml(summaryCategoryKeys(row).join(","))}">
         <div class="digest-card-header">
           <div>
@@ -597,10 +679,10 @@ function renderSummaryCards(summaries) {
               <span>시장 분위기 ${escapeHtml(sentiment)}</span>
             </div>
           </div>
-          <span class="badge badge-unknown">${escapeHtml(row.status || "completed")}</span>
+          ${renderBadge(geminiLabel, geminiType)}
         </div>
         <div class="digest-badges">${renderMentionBadges(row.topMentions, 8)}</div>
-        <p class="digest-conclusion">${escapeHtml(row.conclusion || "한 줄 결론이 없습니다.")}</p>
+        <p class="digest-conclusion line-clamp">${escapeHtml(row.conclusion || "한 줄 결론이 없습니다.")}</p>
         <div class="digest-actions button-row">
           <a class="button" href="/summaries/${row.id}">상세 보기</a>
           <a class="button outline" href="/summaries/${row.id}/export.md">Markdown</a>
@@ -614,14 +696,23 @@ function renderSummaryCards(summaries) {
 function renderSummaries() {
   const summaries = latestSummariesByDate(storage.listSummaries());
   const counts = countSummaryCategories(summaries);
+  const totalMessages = summaries.reduce((sum, row) => sum + Number(row.messageCount || 0), 0);
+  const geminiCount = summaries.filter((row) => row.summary?.geminiSummary && !row.summary.geminiSummary.failed).length;
   return layout("날짜별 요약", `
     <section>
       <div class="title-row">
-        <h2>날짜별 요약 목록</h2>
+        ${renderPageHeader("날짜별 요약 다이제스트", "저장된 카카오톡 미국주식 오픈채팅방 요약을 날짜별로 확인합니다.")}
         ${renderNoticeDisclosure()}
       </div>
+      <div class="stats-grid">
+        <div class="stat"><span>정리된 날짜 수</span><strong>${Number(summaries.length || 0).toLocaleString("ko-KR")}</strong></div>
+        <div class="stat"><span>전체 메시지 수</span><strong>${Number(totalMessages || 0).toLocaleString("ko-KR")}</strong></div>
+        <div class="stat"><span>Gemini 요약 포함</span><strong>${Number(geminiCount || 0).toLocaleString("ko-KR")}</strong></div>
+      </div>
       <div class="digest-toolbar">
-        <input class="search-input" type="search" placeholder="종목, 키워드, 이슈 검색" data-summary-search>
+        <div class="toolbar-card">
+          <input class="search-input" type="search" placeholder="종목, 키워드, 이슈 검색" data-summary-search>
+        </div>
         <div class="filter-chips">
           <button type="button" class="chip active" data-summary-filter="all">전체 ${counts.all}</button>
           <button type="button" class="chip" data-summary-filter="stock">종목 ${counts.stock}</button>
@@ -749,17 +840,21 @@ function renderTickers(url) {
   return layout("종목/자산 언급 추이", `
     <section>
       <div class="title-row">
-        <h2>종목/자산 언급 추이</h2>
-        <a class="button outline" href="/summaries">날짜별 요약</a>
+        ${renderPageHeader("종목/자산 언급 추이", "저장된 요약의 TOP 종목/자산 데이터를 기반으로 날짜별 언급 흐름을 확인합니다.")}
+        <div class="button-row">
+          <a class="button outline" href="/summaries">날짜별 요약</a>
+          <a class="button outline" href="/analytics">분석 대시보드</a>
+        </div>
       </div>
       <p class="muted">저장된 날짜별 요약의 TOP 종목/자산 데이터만 사용합니다. 원본 TXT 전체를 다시 분석하지 않습니다.</p>
       ${renderTickerToolbar(query, category)}
       ${query ? matched ? renderTickerOverview(matched) : `<p class="notice warning">검색한 티커/별칭에 해당하는 저장된 언급 데이터가 없습니다.</p>` : ""}
     </section>
-    <section>
-      <h2>많이 언급된 티커 TOP 20</h2>
-      ${renderTickerList(filtered)}
-    </section>
+    ${renderSectionCard(1, "많이 언급된 티커 TOP 20", [
+      { label: "분야", value: "랭킹" },
+      { label: "검색어", value: query || "전체" },
+      { label: "카테고리", value: tickerCategoryLabel(category === "all" ? "unknown" : category) }
+    ], renderTickerList(filtered))}
   `);
 }
 
@@ -778,8 +873,11 @@ function renderTickerDetail(tickerOrAlias) {
   return layout(`${stat.ticker} 언급 추이`, `
     <section>
       <div class="title-row">
-        <h2>${escapeHtml(stat.ticker)} 언급 추이</h2>
-        <a class="button outline" href="/tickers">종목 추이 목록</a>
+        ${renderPageHeader(`${stat.ticker} 언급 추이`, "저장된 날짜별 요약의 TOP mentions 기준으로 만든 HTML/CSS bar chart입니다.")}
+        <div class="button-row">
+          <a class="button outline" href="/tickers">종목 추이 목록</a>
+          <a class="button outline" href="/analytics">분석 대시보드</a>
+        </div>
       </div>
       <div class="stats-grid">
         <div class="stat"><span>티커/자산명</span><strong>${escapeHtml(stat.ticker)}</strong></div>
@@ -790,9 +888,11 @@ function renderTickerDetail(tickerOrAlias) {
       </div>
       ${renderTickerTrendChart(stat)}
     </section>
-    <section>
-      <h2>날짜별 언급량</h2>
-      <div class="table-wrapper"><table>
+    ${renderSectionCard(1, "날짜별 언급량", [
+      { label: "분야", value: "추이" },
+      { label: "카테고리", value: renderBadge(tickerCategoryLabel(stat.category), stat.category), html: true },
+      { label: "최근 언급", value: stat.recentDate || "-" }
+    ], `<div class="table-wrapper"><table>
         <thead><tr><th>날짜</th><th>언급 수</th><th>분위기</th><th>한 줄 결론</th><th></th></tr></thead>
         <tbody>${stat.dates.map((item) => `<tr>
           <td>${escapeHtml(item.date)}</td>
@@ -801,8 +901,7 @@ function renderTickerDetail(tickerOrAlias) {
           <td>${escapeHtml(item.conclusion || "-")}</td>
           <td>${item.summaryId ? `<a class="button" href="/summaries/${escapeHtml(item.summaryId)}">요약 보기</a>` : "-"}</td>
         </tr>`).join("")}</tbody>
-      </table></div>
-    </section>
+      </table></div>`)}
   `);
 }
 
@@ -900,7 +999,7 @@ function renderAnalytics() {
   return layout("분석 대시보드", `
     <section>
       <div class="title-row">
-        <h2>분석 대시보드</h2>
+        ${renderPageHeader("분석 대시보드", "저장된 날짜별 요약 데이터를 기준으로 전체 기간의 흐름을 비교합니다.")}
         <div class="button-row">
           <a class="button outline" href="/summaries">날짜별 요약</a>
           <a class="button outline" href="/tickers">종목 추이</a>
@@ -918,26 +1017,31 @@ function renderAnalytics() {
         <div class="stat"><span>가장 많이 언급된 종목/자산</span><strong>${escapeHtml(topMentionText)}</strong></div>
       </div>
     </section>
-    <section>
-      <h2>날짜별 메시지 수</h2>
-      ${renderAnalyticsMessageChart(messageSeries)}
-    </section>
-    <section>
-      <h2>날짜별 시장 분위기</h2>
-      ${renderAnalyticsMoodTable(moodRows)}
-    </section>
-    <section>
-      <h2>날짜별 TOP 종목 변화</h2>
-      ${renderAnalyticsDailyTopCards(dailyTopRows)}
-    </section>
-    <section>
-      <h2>Gemini 상태 현황</h2>
-      ${renderAnalyticsGeminiTable(geminiRows)}
-    </section>
-    <section>
-      <h2>전체 TOP 종목/자산 순위</h2>
-      ${renderAnalyticsTopTickerTable(tickerStats)}
-    </section>
+    ${renderSectionCard(1, "날짜별 메시지 수", [
+      { label: "분야", value: "대화량" },
+      { label: "날짜 수", value: `${messageSeries.length}개` },
+      { label: "최대 대화량", value: busiestText }
+    ], renderAnalyticsMessageChart(messageSeries))}
+    ${renderSectionCard(2, "날짜별 시장 분위기", [
+      { label: "분야", value: "시장 심리" },
+      { label: "행 수", value: `${moodRows.length}개` },
+      { label: "연결", value: `<a class="button outline" href="/summaries">요약 목록</a>`, html: true }
+    ], renderAnalyticsMoodTable(moodRows))}
+    ${renderSectionCard(3, "날짜별 TOP 종목 변화", [
+      { label: "분야", value: "종목 변화" },
+      { label: "기준", value: "날짜별 TOP 3" },
+      { label: "연결", value: `<a class="button outline" href="/tickers">종목 추이</a>`, html: true }
+    ], renderAnalyticsDailyTopCards(dailyTopRows))}
+    ${renderSectionCard(4, "Gemini 상태 현황", [
+      { label: "분야", value: "AI 요약" },
+      { label: "Gemini 생성", value: `${summary.geminiGeneratedDateCount || 0}개` },
+      { label: "상태", value: renderBadge("Gemini", "gemini"), html: true }
+    ], renderAnalyticsGeminiTable(geminiRows))}
+    ${renderSectionCard(5, "전체 TOP 종목/자산 순위", [
+      { label: "분야", value: "랭킹" },
+      { label: "표시 범위", value: "TOP 20" },
+      { label: "최상위", value: topMentionText }
+    ], renderAnalyticsTopTickerTable(tickerStats))}
   `);
 }
 
@@ -1084,7 +1188,10 @@ function renderWatchLatestResult(status) {
 
 function renderMessageList(items, emptyText) {
   if (!items || !items.length) return `<p class="muted">${escapeHtml(emptyText)}</p>`;
-  return `<ul class="list">${items.map((item) => `<li>${escapeHtml(item.time)} · ${escapeHtml(item.text)}</li>`).join("")}</ul>`;
+  return `<ul class="list">${items.map((item) => {
+    if (typeof item === "string") return `<li>${escapeHtml(item)}</li>`;
+    return `<li>${item.time ? `${escapeHtml(item.time)} · ` : ""}${escapeHtml(item.text || item.summary || JSON.stringify(item))}</li>`;
+  }).join("")}</ul>`;
 }
 
 function renderTextList(items, emptyText) {
@@ -1109,6 +1216,40 @@ function renderMentionedAssets(items) {
       <td>${escapeHtml(item.reason || "")}</td>
     </tr>`).join("")}</tbody>
   </table></div>`;
+}
+
+function renderMentionedAssetCards(items) {
+  const topItems = Array.isArray(items) ? items.slice(0, 5) : [];
+  if (!topItems.length) return `<p class="muted">언급 이유를 분리할 만큼 종목/자산 언급이 충분하지 않습니다.</p>`;
+  return `<div class="asset-card-grid">
+    ${topItems.map((item) => {
+      const category = item.category || categorizeTicker(item.ticker || "");
+      return `<article class="asset-card">
+        <h4>${badge(item.ticker || "UNKNOWN", category)} ${renderBadge(categoryLabel(category), category)}</h4>
+        <p><strong>언급 수:</strong> ${Number(item.count || 0).toLocaleString("ko-KR")} · <strong>분위기:</strong> ${escapeHtml(item.sentiment || "혼조")}</p>
+        <p>${escapeHtml(compactText(item.reason || (item.keyPoints || []).join(" / "), 90))}</p>
+        <a class="button outline" href="/tickers/${encodeURIComponent(item.ticker || "")}">추이 보기</a>
+      </article>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderTopMentionsRemainderTable(items) {
+  const rows = Array.isArray(items) ? items.slice(5, 10) : [];
+  if (!rows.length) return "";
+  return `<h3>TOP 6~10 요약 표</h3>
+    <div class="table-wrapper"><table>
+      <thead><tr><th>순위</th><th>티커</th><th>분류</th><th>언급 빈도</th><th>분위기</th><th>핵심 내용</th><th></th></tr></thead>
+      <tbody>${rows.map((item, index) => `<tr>
+        <td>${index + 6}</td>
+        <td>${badge(item.ticker, item.category || "unknown")}</td>
+        <td>${escapeHtml(categoryLabel(item.category))}</td>
+        <td>${Number(item.count || 0).toLocaleString("ko-KR")}</td>
+        <td>${escapeHtml(item.sentiment || "")}</td>
+        <td>${escapeHtml(compactText(item.reason || (item.keyPoints || []).join(" / "), 150))}</td>
+        <td><a class="button outline" href="/tickers/${encodeURIComponent(item.ticker || "")}">추이 보기</a></td>
+      </tr>`).join("")}</tbody>
+    </table></div>`;
 }
 
 function categoryLabel(category) {
@@ -1139,18 +1280,16 @@ function renderTopBadges(mentions, limit = 5) {
 
 function renderGeminiSummary(geminiSummary) {
   if (!geminiSummary) {
-    return `<p class="muted meta-small">Gemini 고급 요약이 비활성화되어 있습니다.</p>`;
+    return `<p class="muted meta-small">Gemini 고급 요약이 비활성화되어 있습니다. 현재 리포트는 규칙 기반 요약입니다.</p>`;
   }
   if (geminiSummary.failed) {
-    return `<div class="summary-card">
-      <p class="summary-title">Gemini 고급 요약</p>
+    return `<div>
       <p class="notice warning">Gemini 요약 생성 실패: ${escapeHtml(geminiSummary.error || "알 수 없는 오류")}</p>
       <p class="meta-small">모델: ${escapeHtml(geminiSummary.model || "")} · 생성 시각: ${escapeHtml(geminiSummary.generatedAt || "")}</p>
     </div>`;
   }
   if (geminiSummary.parseFailed) {
-    return `<div class="summary-card">
-      <p class="summary-title">Gemini 고급 요약</p>
+    return `<div>
       <p class="notice warning">Gemini 응답 JSON 파싱에 실패했습니다. 원문 응답을 보관했습니다.</p>
       <div class="soft-box"><code>${escapeHtml(geminiSummary.rawText || "")}</code></div>
       <p class="meta-small">모델: ${escapeHtml(geminiSummary.model || "")} · 생성 시각: ${escapeHtml(geminiSummary.generatedAt || "")}</p>
@@ -1158,14 +1297,16 @@ function renderGeminiSummary(geminiSummary) {
   }
   const topics = Array.isArray(geminiSummary.keyTopics) ? geminiSummary.keyTopics : [];
   const highlights = Array.isArray(geminiSummary.stockHighlights) ? geminiSummary.stockHighlights : [];
-  return `<div class="summary-card emphasis">
-    <p class="summary-title">Gemini 고급 요약</p>
+  return `<div>
     <p class="summary-main">${escapeHtml(geminiSummary.executiveSummary || "Gemini 요약 내용이 없습니다.")}</p>
     <p class="meta-small">시장 분위기: ${escapeHtml(geminiSummary.marketMood || "")} · 모델: ${escapeHtml(geminiSummary.model || "")} · 생성 시각: ${escapeHtml(geminiSummary.generatedAt || "")}</p>
-    <h3>핵심 주제</h3>
-    ${renderTextList(topics, "Gemini가 핵심 주제를 충분히 분리하지 못했습니다.")}
+    <div class="mini-card-grid">
+      <div class="mini-card"><strong>주요 이슈</strong>${renderTextList(topics, "Gemini가 핵심 주제를 충분히 분리하지 못했습니다.")}</div>
+      <div class="mini-card"><strong>리스크</strong>${renderTextList(geminiSummary.risks || [], "Gemini가 별도 리스크를 충분히 분리하지 못했습니다.")}</div>
+      <div class="mini-card"><strong>다음 체크포인트</strong>${renderTextList(geminiSummary.nextCheckpoints || [], "Gemini가 다음 체크포인트를 충분히 분리하지 못했습니다.")}</div>
+    </div>
     <h3>종목별 하이라이트</h3>
-    ${highlights.length ? `<div class="grid">${highlights.map((item) => `<div class="soft-box">
+    ${highlights.length ? `<div class="mini-card-grid">${highlights.map((item) => `<div class="mini-card">
       <strong>${escapeHtml(item.ticker || "UNKNOWN")}</strong>
       <p>${escapeHtml(item.summary || "")}</p>
       <p><strong>긍정:</strong> ${escapeHtml(item.positive || "")}</p>
@@ -1173,10 +1314,6 @@ function renderGeminiSummary(geminiSummary) {
       <p><strong>리스크:</strong> ${escapeHtml(item.risk || "")}</p>
       <p><strong>체크포인트:</strong> ${escapeHtml(item.checkpoint || "")}</p>
     </div>`).join("")}</div>` : `<p class="muted">Gemini 종목별 하이라이트가 없습니다.</p>`}
-    <h3>리스크</h3>
-    ${renderTextList(geminiSummary.risks || [], "Gemini가 별도 리스크를 충분히 분리하지 못했습니다.")}
-    <h3>다음 체크포인트</h3>
-    ${renderTextList(geminiSummary.nextCheckpoints || [], "Gemini가 다음 체크포인트를 충분히 분리하지 못했습니다.")}
   </div>`;
 }
 
@@ -1260,10 +1397,7 @@ function renderRatingSelect(name, label, value, options = RATING_OPTIONS) {
 
 function renderFeedbackForm(row) {
   const feedback = storage.getSummaryFeedback(row.id) || {};
-  return `<div id="feedback" class="section-card">
-    <span class="section-kicker">FEEDBACK</span>
-    <h3>요약 품질 평가</h3>
-    <form action="/summaries/${escapeHtml(row.id)}/feedback" method="post">
+  const body = `<form action="/summaries/${escapeHtml(row.id)}/feedback" method="post">
       <div class="grid">
         ${renderRatingSelect("overallRating", "전체 평가", feedback.overallRating || "mixed")}
         ${renderRatingSelect("tickerRating", "핵심 종목 추출", feedback.tickerRating || "mixed")}
@@ -1279,8 +1413,12 @@ function renderFeedbackForm(row) {
         <a class="button outline" href="/feedback">피드백 목록</a>
       </div>
       ${feedback.updatedAt ? `<p class="meta-small">마지막 저장: ${escapeHtml(new Date(feedback.updatedAt).toLocaleString("ko-KR"))}</p>` : ""}
-    </form>
-  </div>`;
+    </form>`;
+  return renderSectionCard(9, "요약 품질 평가", [
+    { label: "분야", value: "사용자 피드백" },
+    { label: "저장 상태", value: feedback.updatedAt ? "기존 피드백 있음" : "아직 없음" },
+    { label: "관리", value: `<a class="button outline" href="/feedback">피드백 목록</a>`, html: true }
+  ], body, { id: "feedback" });
 }
 
 function feedbackStats(feedbacks) {
@@ -1298,6 +1436,29 @@ function feedbackFilterHref(rating) {
   return rating === "all" ? "/feedback" : `/feedback?rating=${encodeURIComponent(rating)}`;
 }
 
+function renderFeedbackCards(feedbacks) {
+  if (!feedbacks.length) return `<p class="muted">조건에 맞는 피드백이 없습니다.</p>`;
+  return `<div class="summary-card-grid">
+    ${feedbacks.map((feedback) => `<article class="digest-card">
+      <div class="digest-card-header">
+        <div>
+          <div class="digest-date">${escapeHtml(feedback.date || "-")}</div>
+          <div class="digest-meta">
+            <span>전체 ${escapeHtml(ratingLabel(feedback.overallRating))}</span>
+            <span>핵심 종목 ${escapeHtml(ratingLabel(feedback.tickerRating))}</span>
+            <span>Gemini ${escapeHtml(ratingLabel(feedback.geminiRating))}</span>
+          </div>
+        </div>
+        ${renderBadge(ratingLabel(feedback.overallRating), feedback.overallRating === "bad" ? "risk" : feedback.overallRating === "good" ? "stock" : "neutral")}
+      </div>
+      <p class="digest-conclusion line-clamp">${escapeHtml(feedback.note || "메모가 없습니다.")}</p>
+      <div class="button-row">
+        <a class="button" href="/summaries/${escapeHtml(feedback.summaryId)}">상세 요약 보기</a>
+      </div>
+    </article>`).join("")}
+  </div>`;
+}
+
 function renderFeedbackPage(url) {
   const rating = url.searchParams.get("rating") || "all";
   const feedbacks = storage.listSummaryFeedback();
@@ -1312,8 +1473,11 @@ function renderFeedbackPage(url) {
   return layout("요약 피드백", `
     <section>
       <div class="title-row">
-        <h2>요약 피드백</h2>
-        <a class="button outline" href="/summaries">날짜별 요약</a>
+        ${renderPageHeader("요약 피드백", "날짜별 요약 품질 평가와 메모를 모아보는 리포트 관리 화면입니다.")}
+        <div class="button-row">
+          <a class="button outline" href="/summaries">날짜별 요약</a>
+          <a class="button outline" href="/analytics">분석 대시보드</a>
+        </div>
       </div>
       <div class="stats-grid">
         <div class="stat"><span>전체 피드백 수</span><strong>${stats.total}</strong></div>
@@ -1326,20 +1490,11 @@ function renderFeedbackPage(url) {
         ${chips.map(([key, label]) => `<a class="chip ${rating === key ? "active" : ""}" href="${escapeHtml(feedbackFilterHref(key))}">${escapeHtml(label)}</a>`).join("")}
       </div>
     </section>
-    <section>
-      <h2>피드백 목록</h2>
-      ${filtered.length ? `<div class="table-wrapper"><table>
-        <thead><tr><th>날짜</th><th>전체 평가</th><th>핵심 종목</th><th>Gemini</th><th>메모</th><th></th></tr></thead>
-        <tbody>${filtered.map((feedback) => `<tr>
-          <td>${escapeHtml(feedback.date || "-")}</td>
-          <td>${escapeHtml(ratingLabel(feedback.overallRating))}</td>
-          <td>${escapeHtml(ratingLabel(feedback.tickerRating))}</td>
-          <td>${escapeHtml(ratingLabel(feedback.geminiRating))}</td>
-          <td>${escapeHtml(compactText(feedback.note || "", 90))}</td>
-          <td><a class="button" href="/summaries/${escapeHtml(feedback.summaryId)}">상세 요약 보기</a></td>
-        </tr>`).join("")}</tbody>
-      </table></div>` : `<p class="muted">조건에 맞는 피드백이 없습니다.</p>`}
-    </section>
+    ${renderSectionCard(1, "피드백 목록", [
+      { label: "분야", value: "품질 관리" },
+      { label: "필터", value: rating === "all" ? "전체" : ratingLabel(rating) },
+      { label: "표시 수", value: `${filtered.length}개` }
+    ], renderFeedbackCards(filtered))}
   `);
 }
 
@@ -1352,107 +1507,106 @@ function renderDetail(summaryId) {
   const marketMood = sections.marketMood || { summary: "요약 데이터가 없습니다.", sentiment: "관망", evidence: "" };
   const upload = storage.getUpload(row.uploadId) || {};
   const topStocks = Array.isArray(sections.topStocks) ? sections.topStocks : Array.isArray(row.topMentions) ? row.topMentions : [];
-  const topTableRows = topStocks.slice(0, 10);
   const conclusion = sections.conclusion || summary.conclusion || row.conclusion || "";
   const stockDetails = Array.isArray(sections.stockDetails) ? sections.stockDetails : [];
-  const remainingTopRows = topTableRows.slice(5);
+  const date = summary.date || row.date;
+  const excludedCount = (excluded.systemMessageCount || 0) + (excluded.mediaMessageCount || 0);
+  const gemini = summary.geminiSummary;
+  const geminiStatusLabel = gemini?.failed ? "Gemini 실패" : gemini ? "Gemini 포함" : "비활성";
+  const geminiStatusType = gemini?.failed ? "risk" : gemini ? "gemini" : "neutral";
+  const topTickersText = topStocks.slice(0, 5).map((item) => item.ticker).filter(Boolean).join(", ") || "없음";
 
-  return layout(`${summary.date || row.date} 요약`, `
+  return layout(`${date} 요약`, `
     ${renderDateNav(row)}
-    <div class="button-row">
-      <a class="button outline" href="/summaries/${row.id}/export.md">Markdown 다운로드</a>
-      <a class="button outline" href="/summaries/${row.id}/top-mentions.csv">CSV 다운로드</a>
-    </div>
 
     <section class="report-hero">
       <div class="title-row">
-        <div>
-          <h2>${escapeHtml(summary.date || row.date)} 리포트</h2>
-          <p class="muted">카카오톡 TXT 대화를 날짜별로 파싱한 규칙 기반 요약입니다.</p>
-        </div>
+        ${renderPageHeader(`${date} 데일리 리포트`, "카카오톡 TXT 대화를 날짜별로 정리한 미국주식 오픈채팅방 다이제스트입니다.", `
+          <a class="button outline" href="/summaries/${row.id}/export.md">Markdown 다운로드</a>
+          <a class="button outline" href="/summaries/${row.id}/top-mentions.csv">CSV 다운로드</a>
+          <a class="button outline" href="#feedback">피드백 작성</a>
+        `)}
         ${renderNoticeDisclosure()}
       </div>
 
       <div class="stats-grid">
-        <div class="stat"><span>날짜</span><strong>${escapeHtml(summary.date || row.date)}</strong></div>
-        <div class="stat"><span>총 메시지 수</span><strong>${row.messageCount || summary.messageCount || 0}</strong></div>
-        <div class="stat"><span>제외 메시지 수</span><strong>${(excluded.systemMessageCount || 0) + (excluded.mediaMessageCount || 0)}</strong></div>
-        <div class="stat"><span>파싱 실패 수</span><strong>${upload.skippedLineCount || 0}</strong></div>
+        <div class="stat"><span>날짜</span><strong>${escapeHtml(date)}</strong></div>
         <div class="stat"><span>시장 분위기</span><strong>${escapeHtml(marketMood.sentiment || "관망")}</strong></div>
+        <div class="stat"><span>총 메시지 수</span><strong>${row.messageCount || summary.messageCount || 0}</strong></div>
+        <div class="stat"><span>제외 메시지 수</span><strong>${excludedCount}</strong></div>
+        <div class="stat"><span>파싱 실패 수</span><strong>${upload.skippedLineCount || 0}</strong></div>
+        <div class="stat"><span>Gemini 여부</span><strong>${escapeHtml(geminiStatusLabel)}</strong></div>
       </div>
 
       <div class="summary-card emphasis">
         <p class="summary-title">한 줄 결론</p>
         <p class="summary-main">${escapeHtml(conclusion)}</p>
+        <p class="meta-small">TOP 종목/자산: ${escapeHtml(topTickersText)}</p>
       </div>
-
-      ${renderGeminiSummary(summary.geminiSummary)}
-      ${renderFeedbackForm(row)}
-
     </section>
 
-    <section>
-      <div class="section-card">
-      <span class="section-kicker">SECTION 01</span>
-      <h3>오늘의 핵심 흐름</h3>
-      <div class="soft-box">${renderTextList((sections.keyFlows || []).slice(0, 3), "핵심 흐름을 분리할 만큼 투자 관련 대화가 충분하지 않습니다.")}</div>
+    ${renderSectionCard(1, "Gemini 고급 요약", [
+      { label: "분야", value: "AI 맥락 요약" },
+      { label: "상태", value: renderBadge(geminiStatusLabel, geminiStatusType), html: true },
+      { label: "모델", value: gemini?.model || "-" }
+    ], renderGeminiSummary(gemini), { className: "gemini-section" })}
+
+    ${renderSectionCard(2, "오늘의 핵심 흐름", [
+      { label: "분야", value: "시장 흐름" },
+      { label: "항목 수", value: `${(sections.keyFlows || []).slice(0, 3).length}개` },
+      { label: "주요 키워드", value: topTickersText }
+    ], `<div class="soft-box">${renderTextList((sections.keyFlows || []).slice(0, 3), "핵심 흐름을 분리할 만큼 투자 관련 대화가 충분하지 않습니다.")}</div>`, { summary: marketMood.summary || "" })}
+
+    ${renderSectionCard(3, "TOP 종목/자산 요약", [
+      { label: "분야", value: "종목/ETF/자산" },
+      { label: "관련 종목/자산", value: renderTopBadges(topStocks, 5), html: true },
+      { label: "항목 수", value: `${topStocks.length}개` }
+    ], `${renderMentionedAssetCards(sections.mentionedAssets || topStocks)}${renderTopMentionsRemainderTable(sections.mentionedAssets || topStocks)}`)}
+
+    ${renderSectionCard(4, "다음 거래일 체크포인트", [
+      { label: "분야", value: "체크포인트" },
+      { label: "항목 수", value: `${(sections.nextCheckPoints || []).length}개` },
+      { label: "관련 키워드", value: "실적, 매크로, 가격대, 장전/장후" }
+    ], `<div class="soft-box">${renderFlexibleList(sections.nextCheckPoints || [], "다음 거래일 체크 포인트가 명확히 언급되지 않았습니다.")}</div>`)}
+
+    ${renderSectionCard(5, "종목별 상세 분석", [
+      { label: "분야", value: "종목 상세" },
+      { label: "표시 범위", value: "TOP 5" },
+      { label: "관련 종목/자산", value: renderTopBadges(topStocks, 5), html: true }
+    ], `<details open>
+      <summary>종목별 상세 분석 보기</summary>
+      <div class="details-body">${renderStockDetailCards(stockDetails)}</div>
+    </details>`)}
+
+    ${renderSectionCard(6, "주요 논쟁", [
+      { label: "분야", value: "의견 충돌" },
+      { label: "항목 수", value: `${Array.isArray(sections.majorDebates) ? sections.majorDebates.length : 0}개` },
+      { label: "관련 종목/자산", value: topTickersText }
+    ], `<details>
+      <summary>주요 논쟁 펼치기</summary>
+      <div class="details-body">
+        ${Array.isArray(sections.majorDebates) && sections.majorDebates.length ? `<ul class="list">${sections.majorDebates.map((item) => `<li><strong>${escapeHtml(item.topic)}</strong>: ${escapeHtml(item.pro)} / ${escapeHtml(item.con)}</li>`).join("")}</ul>` : `<p class="muted">뚜렷한 논쟁은 감지되지 않았습니다.</p>`}
       </div>
+    </details>`)}
 
-      <div class="section-card">
-      <span class="section-kicker">SECTION 02</span>
-      <h3>TOP 종목/자산 요약</h3>
-      ${renderMentionedAssets((sections.mentionedAssets || []).slice(0, 5))}
-      </div>
+    ${renderSectionCard(7, "리스크 경고", [
+      { label: "분야", value: "리스크" },
+      { label: "항목 수", value: `${(sections.riskWarnings || sections.risks || []).length}개` },
+      { label: "키워드", value: renderBadge("risk", "risk"), html: true }
+    ], `<details>
+      <summary>리스크 경고 펼치기</summary>
+      <div class="details-body">${renderMessageList(sections.riskWarnings || sections.risks || [], "과열, 고점 우려, 실적 리스크 등 명확한 리스크 표현이 제한적입니다.")}</div>
+    </details>`)}
 
-      <div class="section-card">
-      <span class="section-kicker">SECTION 03</span>
-      <h3>다음 거래일 체크포인트</h3>
-      <div class="soft-box">${renderFlexibleList(sections.nextCheckPoints || [], "다음 거래일 체크 포인트가 명확히 언급되지 않았습니다.")}</div>
-      </div>
+    ${renderSectionCard(8, "용어 보기", [
+      { label: "분야", value: "용어집" },
+      { label: "표시 방식", value: "접기/펼치기" },
+      { label: "대상", value: "미국주식방 약어" }
+    ], renderGlossaryDetails())}
 
-      <div class="section-card">
-      <span class="section-kicker">SECTION 04</span>
-      <details>
-        <summary>종목별 상세 분석 TOP 5 펼치기</summary>
-        <div class="details-body">${renderStockDetailCards(stockDetails)}</div>
-      </details>
-      </div>
+    ${renderFeedbackForm(row)}
 
-      ${remainingTopRows.length ? `<h3>TOP 6~10 요약 표</h3>
-      <div class="table-wrapper"><table>
-        <thead><tr><th>순위</th><th>티커</th><th>분류</th><th>언급 빈도</th><th>분위기</th><th>핵심 내용</th></tr></thead>
-        <tbody>${remainingTopRows.map((item, index) => `<tr>
-          <td>${index + 6}</td>
-          <td>${badge(item.ticker, item.category || "unknown")}</td>
-          <td>${escapeHtml(categoryLabel(item.category))}</td>
-          <td>${item.count || 0}</td>
-          <td>${escapeHtml(item.sentiment || "")}</td>
-          <td>${escapeHtml(compactText((item.keyPoints || []).join(" / "), 180))}</td>
-        </tr>`).join("")}</tbody>
-      </table></div>` : ""}
-
-      <div class="section-card">
-      <span class="section-kicker">SECTION 05</span>
-      <details>
-        <summary>주요 논쟁 펼치기</summary>
-        <div class="details-body">
-          ${Array.isArray(sections.majorDebates) && sections.majorDebates.length ? `<ul class="list">${sections.majorDebates.map((item) => `<li><strong>${escapeHtml(item.topic)}</strong>: ${escapeHtml(item.pro)} / ${escapeHtml(item.con)}</li>`).join("")}</ul>` : `<p class="muted">뚜렷한 논쟁은 감지되지 않았습니다.</p>`}
-        </div>
-      </details>
-      </div>
-
-      <div class="section-card">
-      <span class="section-kicker">SECTION 06</span>
-      <details>
-        <summary>리스크 경고 펼치기</summary>
-        <div class="details-body">${renderMessageList(sections.riskWarnings || sections.risks || [], "과열, 고점 우려, 실적 리스크 등 명확한 리스크 표현이 제한적입니다.")}</div>
-      </details>
-      </div>
-
-      ${renderGlossaryDetails()}
-
-      <p class="notice warning">이 내용은 투자 조언이 아니라 카카오톡 채팅방 대화 요약입니다.</p>
-    </section>
+    <section><p class="notice warning">이 내용은 투자 조언이 아니라 카카오톡 채팅방 대화 요약입니다.</p></section>
 
     ${renderDateNav(row)}
   `);
