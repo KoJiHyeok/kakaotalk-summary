@@ -240,6 +240,116 @@ node --test
 
 날짜 구분선 이후의 `[작성자] [오전/오후 h:mm] 메시지` 형식을 우선 처리합니다. 작성자 이름에 공백, 숫자, 특수문자가 포함되어도 가능한 한 파싱합니다.
 
+### 지원하는 TXT 형식
+
+현재 parser는 카카오톡에서 사용자가 직접 내보낸 TXT 파일만 대상으로 합니다. 다음 변형을 처리합니다.
+
+- 날짜 구분선: `--------------- 2026년 5월 22일 금요일 ---------------`
+- 날짜 구분선: `===== 2026. 05. 23. 토요일 =====`
+- 영문 날짜 구분선: `Friday, May 22, 2026`
+- 기본 메시지: `[작성자] [오후 6:12] 메시지`
+- AM/PM 메시지: `[Author] [6:12 PM] message`
+- 날짜 포함 인라인 메시지: `2026년 5월 20일 오후 6:12, 작성자 : 메시지`
+- 점 구분 인라인 메시지: `2026. 5. 20. 오전 9:02, 작성자 : 메시지`
+- 날짜 bracket 메시지: `[2026. 5. 21. 09:03] [작성자] 메시지`
+- 여러 줄 메시지: 새 메시지 패턴이 나오기 전까지 직전 일반 메시지 본문에 이어 붙임
+- 시스템 메시지: 입장/퇴장, 공지, 오픈채팅봇, 관리자 메시지 등은 요약 대상에서 제외하고 별도 카운트
+- 미디어 메시지: 사진, 동영상, 이모티콘, 삭제 메시지, 음성메시지, 파일 등은 요약 대상에서 제외하고 별도 카운트
+- 날짜 없이 `[작성자] [오전/오후 h:mm]` 형식만 있는 줄은 날짜를 알 수 없으므로 `skippedLines`에 기록
+
+### 지원하지 않는 방식
+
+- 카카오톡 앱 내부 DB 직접 읽기
+- 비공식 카카오톡 클라이언트 사용
+- Loco protocol, 봇 API, 내부 프로토콜 접근
+- 광고 차단, 보안 우회, 세션 탈취, 크롤링 방식
+- 원본 대화 자동 수집
+
+이 프로젝트는 웹 업로드 또는 로컬 `watch/` 폴더에 사용자가 직접 저장한 TXT 파일만 처리합니다.
+
+### collector adapter 구조
+
+향후 공식 API, 웹훅, 안전한 로그 소스가 생겼을 때 기존 요약 파이프라인에 쉽게 연결할 수 있도록 collector 계층을 분리했습니다.
+
+현재 collector 파일:
+
+```text
+src/collectors/baseCollector.js
+src/collectors/manualUploadCollector.js
+src/collectors/watchFolderCollector.js
+src/collectors/officialApiCollector.example.js
+src/collectors/webhookCollector.example.js
+```
+
+공통 인터페이스:
+
+```js
+{
+  name,
+  type,
+  isEnabled(),
+  collect(),
+  getStatus()
+}
+```
+
+`collect()`가 실제 데이터를 반환하는 경우 형식은 다음과 같습니다.
+
+```js
+{
+  source: "watch-folder" | "manual-upload" | "official-api" | "webhook",
+  fileName,
+  content,
+  collectedAt,
+  metadata
+}
+```
+
+현재 지원 수집 방식:
+
+- Manual Upload: 사용자가 웹에서 직접 TXT 파일을 업로드
+- Watch Folder: 사용자가 `watch/` 폴더에 직접 저장한 TXT 파일을 자동 처리
+
+현재 미연결 placeholder:
+
+- Official API: 공식 API가 대화 원문 조회를 명시적으로 제공하고 권한이 확인될 때만 연결
+- Webhook: 권한 있는 안전한 로그 소스가 서명 검증된 요청으로 TXT 또는 메시지 데이터를 보낼 때만 연결
+
+지원하지 않는 collector:
+
+- KakaoTalk unofficial collector: 비공식 프로토콜, 내부 API, 로그인 세션 재사용, 앱 데이터 직접 접근, 보안 우회 방식은 지원하지 않습니다.
+
+안전 안내:
+
+> 이 앱은 카카오톡 비공식 프로토콜, 내부 API, 세션 재사용, 보안 우회 방식의 자동 수집을 지원하지 않습니다. 현재 안전하게 지원하는 방식은 사용자가 직접 내보낸 TXT 파일과 watch 폴더 자동 처리입니다.
+
+현재 권장 사용 흐름은 `카카오톡 TXT 내보내기 → watch 폴더 저장 → 자동 요약`입니다. 공식 API나 웹훅을 붙일 경우에도 인증 정보는 환경변수로 관리하고, 원본 대화 수집 권한과 저장 범위를 먼저 확인해야 합니다.
+
+### parser interface
+
+`src/parser.js`의 `parseKakaoTalkTxt(content)`는 실패 줄이 있어도 예외로 중단하지 않고 다음 구조를 반환합니다.
+
+```js
+{
+  messages,            // 일반 채팅 메시지. analyzer/summarizer 입력
+  systemMessages,      // 시스템성 메시지. 요약 본문 제외
+  mediaMessages,       // 사진/동영상/삭제 메시지 등. 요약 본문 제외
+  allMessages,         // chat/system/media 전체 파싱 결과
+  skippedLines,        // 파싱 실패 또는 날짜 누락 줄 전체
+  skippedLineSamples,  // skippedLines 앞 10개
+  stats: {
+    parsedMessageCount,
+    systemMessageCount,
+    mediaMessageCount,
+    excludedMessageCount,
+    skippedLineCount,
+    detectedDateCount
+  }
+}
+```
+
+개별 메시지의 기본 스키마는 `{ date, time, author, text, type, raw_text }`입니다. `type`은 `chat`, `system`, `media` 중 하나입니다.
+
 ## watch 폴더 자동 처리
 
 2차 기능으로 로컬 감시 폴더 처리를 지원합니다. 이것은 카카오톡 자동 수집이 아니라, 사용자가 직접 내보낸 TXT 파일을 로컬 폴더에 넣으면 서버가 자동으로 처리하는 기능입니다.
@@ -388,6 +498,8 @@ SNDK
 - 최근 7일 처리 현황
 - 종목/자산 언급 추이 페이지
 - 티커/별칭 검색과 HTML/CSS 추이 그래프
+- collector 상태 페이지
+- 안전한 collector adapter 구조
 - 업로드 메타데이터와 날짜별 요약 결과 저장
 
 ## 저장 위치

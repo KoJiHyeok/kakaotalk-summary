@@ -8,6 +8,7 @@ const { getWatchStatus, startWatchFolder, WATCH_DIR } = require("./watchService"
 const { getTodaySummaryStatus, getRecentSevenDayStatus } = require("./dailyStatus");
 const { openFolder } = require("./folderOpener");
 const { buildTickerStats, findTickerStats, normalizeTickerQuery } = require("./tickerStats");
+const { getCollectorStatuses, manualUploadCollector, SAFE_COLLECTION_NOTICE } = require("./collectors");
 const { getGeminiConfig, canUseGemini } = require("./geminiClient");
 const {
   createMarkdownExport,
@@ -165,6 +166,7 @@ function layout(title, body) {
       <a href="/">업로드</a>
       <a href="/summaries">날짜별 요약</a>
       <a href="/tickers">종목 추이</a>
+      <a href="/collectors">수집 방식</a>
       <a href="/uploads">업로드 기록</a>
       <a href="/watch">감시 폴더</a>
     </nav>
@@ -278,6 +280,10 @@ function renderHome(message = "") {
         <a class="quick-card" href="/watch">
           <strong>감시 폴더 상태</strong>
           <span>watch 폴더 자동 처리, 성공/실패/중복 기록을 확인합니다.</span>
+        </a>
+        <a class="quick-card" href="/collectors">
+          <strong>Collector 상태 보기</strong>
+          <span>현재 지원하는 안전한 수집 방식과 향후 공식 API/웹훅 연결 지점을 확인합니다.</span>
         </a>
         <a class="quick-card" href="/uploads">
           <strong>업로드 기록</strong>
@@ -779,6 +785,46 @@ function renderTickerDetail(tickerOrAlias) {
   `);
 }
 
+function collectorStatusLabel(status) {
+  return {
+    available: "사용 가능",
+    disabled: "비활성",
+    not_connected: "미연결",
+    unsupported: "지원하지 않음"
+  }[status] || status || "알 수 없음";
+}
+
+function renderCollectors() {
+  const statuses = getCollectorStatuses();
+  return layout("Collector 상태", `
+    <section>
+      <div class="title-row">
+        <h2>수집 방식 관리</h2>
+        <a class="button outline" href="/">홈으로</a>
+      </div>
+      <p class="notice">${escapeHtml(SAFE_COLLECTION_NOTICE)}</p>
+      <p class="muted">collector 계층은 TXT 문자열을 기존 <code>processTxtContent()</code> 파이프라인으로 넘길 수 있는 안전한 adapter 구조입니다. 현재 자동 처리는 사용자가 직접 저장한 watch 폴더 TXT 파일만 대상으로 합니다.</p>
+      <div class="summary-card-grid">
+        ${statuses.map((collector) => `<article class="digest-card">
+          <div class="digest-card-header">
+            <div>
+              <div class="digest-date">${escapeHtml(collector.name)}</div>
+              <div class="digest-meta">
+                <span>${escapeHtml(collector.type)}</span>
+                <span>${escapeHtml(collectorStatusLabel(collector.status))}</span>
+              </div>
+            </div>
+            <span class="badge badge-${collector.enabled ? "stock" : "unknown"}">${collector.enabled ? "enabled" : "disabled"}</span>
+          </div>
+          <p>${escapeHtml(collector.description)}</p>
+          <p class="muted">마지막 처리 시각: ${collector.lastCollectedAt ? escapeHtml(new Date(collector.lastCollectedAt).toLocaleString("ko-KR")) : "-"}</p>
+          <div class="soft-box">${escapeHtml(collector.safetyNotes || SAFE_COLLECTION_NOTICE)}</div>
+        </article>`).join("")}
+      </div>
+    </section>
+  `);
+}
+
 function renderUploads() {
   const uploads = storage.listUploads();
   return layout("업로드 기록", `
@@ -1252,10 +1298,15 @@ async function handleUpload(req, res) {
     }
 
     uploadContext = { filename: file.filename, byteLength: file.content.length };
-    const saved = await processTxtContent({
+    const [collection] = await manualUploadCollector.collect({
+      fileName: file.filename,
       content: file.content.toString("utf8"),
-      originalFilename: file.filename,
-      source: "web_upload",
+      metadata: { byteLength: file.content.length }
+    });
+    const saved = await processTxtContent({
+      content: collection.content,
+      originalFilename: collection.fileName,
+      source: collection.source,
       onDailyError: (error, context) => {
         logDetailedError("Daily summary generation failed", error, {
           ...uploadContext,
@@ -1320,6 +1371,7 @@ async function router(req, res) {
   if (req.method === "GET" && url.pathname === "/uploads") return response(res, 200, renderUploads());
   if (req.method === "GET" && url.pathname === "/watch/open-folder") return handleOpenWatchFolder(res);
   if (req.method === "GET" && url.pathname === "/watch") return response(res, 200, renderWatchStatus());
+  if (req.method === "GET" && url.pathname === "/collectors") return response(res, 200, renderCollectors());
   if (req.method === "GET" && url.pathname === "/tickers") return response(res, 200, renderTickers(url));
   if (req.method === "GET" && url.pathname.startsWith("/tickers/")) return response(res, 200, renderTickerDetail(decodeURIComponent(url.pathname.split("/")[2] || "")));
   if (req.method === "GET" && url.pathname.startsWith("/uploads/")) return response(res, 200, renderUploadDetail(url.pathname.split("/")[2]));

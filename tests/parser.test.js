@@ -69,6 +69,60 @@ test("groups messages by date", () => {
   assert.deepEqual(Object.keys(grouped).sort(), ["2026-05-20", "2026-05-21"]);
 });
 
+test("supports multiple date separator variants", () => {
+  assert.equal(parseKakaoTalkTxt(`--------------- 2026년 5월 22일 금요일 ---------------
+[민수] [오후 6:12] NVDA`).messages[0].date, "2026-05-22");
+
+  assert.equal(parseKakaoTalkTxt(`===== 2026. 05. 23. 토요일 =====
+[민수] [오전 9:01] TSLA`).messages[0].date, "2026-05-23");
+
+  assert.equal(parseKakaoTalkTxt(`Friday, May 22, 2026
+[Minsoo] [6:12 PM] COIN`).messages[0].date, "2026-05-22");
+});
+
+test("supports inline Korean date messages and bracket date messages", () => {
+  const result = parseKakaoTalkTxt(`2026년 5월 20일 오후 6:12, 민수 : NVDA 실적 기대
+[2026. 5. 21. 09:03] [지훈] COIN 재진입 고민`);
+
+  assert.equal(result.stats.parsedMessageCount, 2);
+  assert.equal(result.messages[0].date, "2026-05-20");
+  assert.equal(result.messages[0].time, "18:12");
+  assert.equal(result.messages[1].date, "2026-05-21");
+  assert.equal(result.messages[1].time, "09:03");
+});
+
+test("standalone system and media lines are excluded instead of merged into chat", () => {
+  const result = parseKakaoTalkTxt(`2026년 5월 22일 금요일
+[민수] [오후 6:12] AMD 확인
+영희님이 들어왔습니다.
+사진
+[지훈] [오후 6:14] NVDA 체크`);
+
+  assert.equal(result.stats.parsedMessageCount, 2);
+  assert.equal(result.stats.systemMessageCount, 1);
+  assert.equal(result.stats.mediaMessageCount, 1);
+  assert.doesNotMatch(result.messages[0].text, /들어왔습니다|사진/);
+});
+
+test("skipped line samples are capped at ten", () => {
+  const input = Array.from({ length: 12 }, (_, index) => `[민수] [오후 6:${String(index).padStart(2, "0")}] 날짜 없음`).join("\n");
+  const result = parseKakaoTalkTxt(input);
+
+  assert.equal(result.stats.skippedLineCount, 12);
+  assert.equal(result.skippedLineSamples.length, 10);
+  assert.equal(result.skippedLineSamples[0].reason, "missing_date");
+});
+
+test("ignores common export header lines", () => {
+  const result = parseKakaoTalkTxt(`카카오톡 대화
+저장한 날짜 : 2026년 5월 23일
+--------------- 2026년 5월 23일 토요일 ---------------
+[민수] [오전 9:02] NVDA`);
+
+  assert.equal(result.stats.parsedMessageCount, 1);
+  assert.equal(result.stats.skippedLineCount, 0);
+});
+
 test("extracts normalized tickers and Korean aliases", () => {
   assert.deepEqual(extractTickers("오늘 RKLb랑 엔비 엔비디아 NVDA 봅니다.").sort(), ["NVDA", "RKLB"]);
 });
