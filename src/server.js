@@ -63,6 +63,9 @@ function layout(title, body) {
     .metric strong { display:block; font-size:24px; margin-top:4px; }
     form { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
     input[type="file"] { border:1px solid var(--line); padding:10px; border-radius:8px; background:#fff; max-width:100%; }
+    select, textarea { border:1px solid var(--line); border-radius:8px; padding:10px; font-family:inherit; font-size:14px; background:#fff; max-width:100%; }
+    textarea { width:100%; min-height:110px; resize:vertical; line-height:1.6; }
+    label { display:grid; gap:6px; font-weight:700; }
     button, .button { border:0; background:var(--accent); color:#fff; padding:10px 14px; border-radius:7px; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:14px; }
     table { width:100%; min-width:680px; border-collapse:collapse; margin-top:10px; background:#fff; }
     .table-wrapper { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
@@ -174,6 +177,7 @@ function layout(title, body) {
       <a href="/summaries">날짜별 요약</a>
       <a href="/tickers">종목 추이</a>
       <a href="/analytics">분석 대시보드</a>
+      <a href="/feedback">요약 피드백</a>
       <a href="/collectors">수집 방식</a>
       <a href="/uploads">업로드 기록</a>
       <a href="/watch">감시 폴더</a>
@@ -288,6 +292,10 @@ function renderHome(message = "") {
         <a class="quick-card" href="/analytics">
           <strong>분석 대시보드</strong>
           <span>전체 기간 메시지 수, 시장 분위기, Gemini 상태, TOP 종목을 한눈에 비교합니다.</span>
+        </a>
+        <a class="quick-card" href="/feedback">
+          <strong>요약 피드백 보기</strong>
+          <span>날짜별 요약 품질 평가와 메모를 확인하고 개선 포인트를 모읍니다.</span>
         </a>
         <a class="quick-card" href="/watch">
           <strong>감시 폴더 상태</strong>
@@ -896,6 +904,7 @@ function renderAnalytics() {
         <div class="button-row">
           <a class="button outline" href="/summaries">날짜별 요약</a>
           <a class="button outline" href="/tickers">종목 추이</a>
+          <a class="button outline" href="/feedback">요약 피드백</a>
         </div>
       </div>
       <p class="muted">저장된 날짜별 summary와 업로드 메타데이터를 기준으로 전체 기간을 비교합니다. 원본 TXT 전체를 다시 분석하지 않습니다.</p>
@@ -1221,6 +1230,119 @@ function renderStockDetailCards(details) {
   </div>`).join("");
 }
 
+const RATING_OPTIONS = [
+  ["good", "좋음"],
+  ["mixed", "애매함"],
+  ["bad", "별로"]
+];
+
+const GEMINI_RATING_OPTIONS = [
+  ...RATING_OPTIONS,
+  ["not_used", "사용 안 함"]
+];
+
+function ratingLabel(value) {
+  return {
+    good: "좋음",
+    mixed: "애매함",
+    bad: "별로",
+    not_used: "사용 안 함"
+  }[value] || "애매함";
+}
+
+function renderRatingSelect(name, label, value, options = RATING_OPTIONS) {
+  return `<label>${escapeHtml(label)}
+    <select name="${escapeHtml(name)}">
+      ${options.map(([key, text]) => `<option value="${escapeHtml(key)}"${value === key ? " selected" : ""}>${escapeHtml(text)}</option>`).join("")}
+    </select>
+  </label>`;
+}
+
+function renderFeedbackForm(row) {
+  const feedback = storage.getSummaryFeedback(row.id) || {};
+  return `<div id="feedback" class="section-card">
+    <span class="section-kicker">FEEDBACK</span>
+    <h3>요약 품질 평가</h3>
+    <form action="/summaries/${escapeHtml(row.id)}/feedback" method="post">
+      <div class="grid">
+        ${renderRatingSelect("overallRating", "전체 평가", feedback.overallRating || "mixed")}
+        ${renderRatingSelect("tickerRating", "핵심 종목 추출", feedback.tickerRating || "mixed")}
+        ${renderRatingSelect("conclusionRating", "한 줄 결론", feedback.conclusionRating || "mixed")}
+        ${renderRatingSelect("checkpointRating", "체크포인트", feedback.checkpointRating || "mixed")}
+        ${renderRatingSelect("geminiRating", "Gemini 요약", feedback.geminiRating || "not_used", GEMINI_RATING_OPTIONS)}
+      </div>
+      <label>메모
+        <textarea name="note" placeholder="요약에서 좋았던 점, 빠진 내용, Gemini 프롬프트 개선 아이디어를 적어주세요.">${escapeHtml(feedback.note || "")}</textarea>
+      </label>
+      <div class="button-row">
+        <button type="submit">피드백 저장</button>
+        <a class="button outline" href="/feedback">피드백 목록</a>
+      </div>
+      ${feedback.updatedAt ? `<p class="meta-small">마지막 저장: ${escapeHtml(new Date(feedback.updatedAt).toLocaleString("ko-KR"))}</p>` : ""}
+    </form>
+  </div>`;
+}
+
+function feedbackStats(feedbacks) {
+  return feedbacks.reduce((acc, feedback) => {
+    acc.total += 1;
+    if (feedback.overallRating === "good") acc.good += 1;
+    if (feedback.overallRating === "mixed") acc.mixed += 1;
+    if (feedback.overallRating === "bad") acc.bad += 1;
+    if (feedback.geminiRating === "good") acc.geminiGood += 1;
+    return acc;
+  }, { total: 0, good: 0, mixed: 0, bad: 0, geminiGood: 0 });
+}
+
+function feedbackFilterHref(rating) {
+  return rating === "all" ? "/feedback" : `/feedback?rating=${encodeURIComponent(rating)}`;
+}
+
+function renderFeedbackPage(url) {
+  const rating = url.searchParams.get("rating") || "all";
+  const feedbacks = storage.listSummaryFeedback();
+  const stats = feedbackStats(feedbacks);
+  const filtered = rating === "all" ? feedbacks : feedbacks.filter((feedback) => feedback.overallRating === rating);
+  const chips = [
+    ["all", "전체"],
+    ["good", "좋음"],
+    ["mixed", "애매함"],
+    ["bad", "별로"]
+  ];
+  return layout("요약 피드백", `
+    <section>
+      <div class="title-row">
+        <h2>요약 피드백</h2>
+        <a class="button outline" href="/summaries">날짜별 요약</a>
+      </div>
+      <div class="stats-grid">
+        <div class="stat"><span>전체 피드백 수</span><strong>${stats.total}</strong></div>
+        <div class="stat"><span>좋음 수</span><strong>${stats.good}</strong></div>
+        <div class="stat"><span>애매함 수</span><strong>${stats.mixed}</strong></div>
+        <div class="stat"><span>별로 수</span><strong>${stats.bad}</strong></div>
+        <div class="stat"><span>Gemini 좋음 수</span><strong>${stats.geminiGood}</strong></div>
+      </div>
+      <div class="filter-chips">
+        ${chips.map(([key, label]) => `<a class="chip ${rating === key ? "active" : ""}" href="${escapeHtml(feedbackFilterHref(key))}">${escapeHtml(label)}</a>`).join("")}
+      </div>
+    </section>
+    <section>
+      <h2>피드백 목록</h2>
+      ${filtered.length ? `<div class="table-wrapper"><table>
+        <thead><tr><th>날짜</th><th>전체 평가</th><th>핵심 종목</th><th>Gemini</th><th>메모</th><th></th></tr></thead>
+        <tbody>${filtered.map((feedback) => `<tr>
+          <td>${escapeHtml(feedback.date || "-")}</td>
+          <td>${escapeHtml(ratingLabel(feedback.overallRating))}</td>
+          <td>${escapeHtml(ratingLabel(feedback.tickerRating))}</td>
+          <td>${escapeHtml(ratingLabel(feedback.geminiRating))}</td>
+          <td>${escapeHtml(compactText(feedback.note || "", 90))}</td>
+          <td><a class="button" href="/summaries/${escapeHtml(feedback.summaryId)}">상세 요약 보기</a></td>
+        </tr>`).join("")}</tbody>
+      </table></div>` : `<p class="muted">조건에 맞는 피드백이 없습니다.</p>`}
+    </section>
+  `);
+}
+
 function renderDetail(summaryId) {
   const row = storage.getSummary(summaryId);
   if (!row) return layout("요약 없음", `<section><h2>요약을 찾을 수 없습니다.</h2></section>`);
@@ -1265,6 +1387,7 @@ function renderDetail(summaryId) {
       </div>
 
       ${renderGeminiSummary(summary.geminiSummary)}
+      ${renderFeedbackForm(row)}
 
     </section>
 
@@ -1469,6 +1592,29 @@ async function handleUpload(req, res) {
   }
 }
 
+async function handleSummaryFeedback(req, res, summaryId) {
+  try {
+    if (!storage.getSummary(summaryId)) {
+      response(res, 404, layout("404", `<section><h2>요약을 찾을 수 없습니다.</h2></section>`));
+      return;
+    }
+    const body = await readRequestBody(req);
+    const params = new URLSearchParams(body.toString("utf8"));
+    storage.saveSummaryFeedback(summaryId, {
+      overallRating: params.get("overallRating"),
+      tickerRating: params.get("tickerRating"),
+      conclusionRating: params.get("conclusionRating"),
+      checkpointRating: params.get("checkpointRating"),
+      geminiRating: params.get("geminiRating"),
+      note: params.get("note") || ""
+    });
+    redirect(res, `/summaries/${summaryId}#feedback`);
+  } catch (error) {
+    logDetailedError("Summary feedback save failed", error, { summaryId });
+    response(res, 500, layout("피드백 저장 실패", `<section><h2>피드백 저장 중 오류가 발생했습니다.</h2><p>${escapeHtml(error.message || String(error))}</p></section>`));
+  }
+}
+
 function handleSummaryExport(res, summaryId, format) {
   const row = storage.getSummary(summaryId);
   if (!row) {
@@ -1520,6 +1666,7 @@ async function router(req, res) {
   if (req.method === "GET" && url.pathname === "/watch") return response(res, 200, renderWatchStatus());
   if (req.method === "GET" && url.pathname === "/collectors") return response(res, 200, renderCollectors());
   if (req.method === "GET" && url.pathname === "/analytics") return response(res, 200, renderAnalytics());
+  if (req.method === "GET" && url.pathname === "/feedback") return response(res, 200, renderFeedbackPage(url));
   if (req.method === "GET" && url.pathname === "/tickers") return response(res, 200, renderTickers(url));
   if (req.method === "GET" && url.pathname.startsWith("/tickers/")) return response(res, 200, renderTickerDetail(decodeURIComponent(url.pathname.split("/")[2] || "")));
   if (req.method === "GET" && url.pathname.startsWith("/uploads/")) return response(res, 200, renderUploadDetail(url.pathname.split("/")[2]));
@@ -1529,6 +1676,8 @@ async function router(req, res) {
   if (req.method === "GET" && exportMatch) {
     return handleSummaryExport(res, exportMatch[1], exportMatch[2] === "export.md" ? "markdown" : "csv");
   }
+  const feedbackMatch = url.pathname.match(/^\/summaries\/([^/]+)\/feedback$/);
+  if (req.method === "POST" && feedbackMatch) return handleSummaryFeedback(req, res, feedbackMatch[1]);
   if (req.method === "GET" && url.pathname.startsWith("/summaries/")) return response(res, 200, renderDetail(url.pathname.split("/")[2]));
   if (req.method === "POST" && url.pathname === "/upload") return handleUpload(req, res);
 

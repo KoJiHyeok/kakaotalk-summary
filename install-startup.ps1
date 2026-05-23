@@ -9,8 +9,10 @@ $projectDir = $PSScriptRoot
 $startupDir = [Environment]::GetFolderPath("Startup")
 $targetScript = if ($Gemini) { "start-gemini-app.bat" } else { "start-app.bat" }
 $shortcutName = if ($Gemini) { "KakaoTalk Stock Summary Gemini.lnk" } else { "KakaoTalk Stock Summary.lnk" }
+$otherShortcutName = if ($Gemini) { "KakaoTalk Stock Summary.lnk" } else { "KakaoTalk Stock Summary Gemini.lnk" }
 $targetPath = Join-Path $projectDir $targetScript
 $shortcutPath = Join-Path $startupDir $shortcutName
+$otherShortcutPath = Join-Path $startupDir $otherShortcutName
 
 if (-not (Test-Path -LiteralPath $targetPath)) {
   throw "Target script not found: $targetPath"
@@ -19,10 +21,26 @@ if (-not (Test-Path -LiteralPath $targetPath)) {
 Write-Host "Startup folder: $startupDir"
 Write-Host "Target script: $targetPath"
 Write-Host "Shortcut: $shortcutPath"
+Write-Host "Mutually exclusive shortcut: $otherShortcutPath"
 
 if ($DryRun) {
+  if (Test-Path -LiteralPath $otherShortcutPath) {
+    Write-Host "Dry run: would remove the other startup shortcut to prevent duplicate browser windows: $otherShortcutName"
+  } else {
+    Write-Host "Dry run: no other startup shortcut found."
+  }
+  if (Test-Path -LiteralPath $shortcutPath) {
+    Write-Host "Dry run: would replace existing shortcut: $shortcutName"
+  } else {
+    Write-Host "Dry run: would create shortcut: $shortcutName"
+  }
   Write-Host "Dry run only. No shortcut was created."
   exit 0
+}
+
+if (Test-Path -LiteralPath $otherShortcutPath) {
+  Remove-Item -LiteralPath $otherShortcutPath -Force
+  Write-Host "Removed the other startup shortcut to prevent duplicate browser windows: $otherShortcutName"
 }
 
 if (Test-Path -LiteralPath $shortcutPath) {
