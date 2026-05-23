@@ -4,7 +4,9 @@ const http = require("http");
 const path = require("path");
 const { categorizeTicker } = require("./analyzer");
 const { processTxtContent } = require("./processor");
-const { getWatchStatus, startWatchFolder } = require("./watchService");
+const { getWatchStatus, startWatchFolder, WATCH_DIR } = require("./watchService");
+const { getTodaySummaryStatus, getRecentSevenDayStatus } = require("./dailyStatus");
+const { openFolder } = require("./folderOpener");
 const { getGeminiConfig, canUseGemini } = require("./geminiClient");
 const {
   createMarkdownExport,
@@ -115,6 +117,15 @@ function layout(title, body) {
     .quick-card strong { display:block; font-size:17px; margin-bottom:8px; }
     .quick-card span { display:block; color:var(--muted); line-height:1.6; }
     .quick-card:hover { border-color:#94a3b8; box-shadow:0 8px 24px rgba(15,23,42,.08); }
+    .today-status-card { border-color:#c7d2fe; background:#fbfcff; }
+    .today-status-card .notice { margin-top:12px; }
+    .folder-path { display:block; margin:8px 0 0; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; overflow-wrap:anywhere; }
+    .recent-day-list { display:grid; gap:8px; margin-top:12px; }
+    .recent-day-item { display:flex; justify-content:space-between; gap:12px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#fff; }
+    .recent-day-item a { color:var(--accent); font-weight:700; text-decoration:none; }
+    .status-pill { display:inline-flex; align-items:center; border-radius:999px; padding:4px 9px; font-size:12px; font-weight:700; border:1px solid var(--line); background:#f8fafc; }
+    .status-pill.done { background:#ecfdf3; border-color:#bbf7d0; color:#166534; }
+    .status-pill.missing { background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
     .section-card { border:1px solid var(--line); border-radius:8px; background:#fff; padding:22px; margin:18px 0; box-shadow:0 1px 0 rgba(15,23,42,.03); }
     .section-kicker { display:block; color:var(--accent); font-size:12px; font-weight:800; letter-spacing:.04em; margin-bottom:6px; }
     .section-card h3 { margin-top:0; }
@@ -231,6 +242,10 @@ function renderHome(message = "") {
   const uploads = storage.listUploads().slice(0, 5);
   const geminiConfig = getGeminiConfig();
   const watchStatus = getWatchStatus();
+  const todayStatus = getTodaySummaryStatus({
+    summaries: storage.listSummaries(),
+    watchRecords: watchStatus.recent
+  });
   return layout("TXT 업로드", `
     <section>
       <h2>바로가기</h2>
@@ -255,6 +270,7 @@ function renderHome(message = "") {
       <p class="muted">서버 주소: http://localhost:${PORT} · Gemini: ${canUseGemini(geminiConfig) ? "활성" : "비활성"} · 모델: ${escapeHtml(geminiConfig.model)}</p>
       <p class="muted">Windows 시작 시 자동 실행은 README의 install-startup 스크립트 안내를 참고하세요.</p>
     </section>
+    ${renderTodaySummaryStatusCard(todayStatus, watchStatus.watchDir)}
     ${renderLatestWatchSummaryCard(watchStatus)}
     <section>
       <h2>TXT 파일 업로드</h2>
@@ -298,6 +314,65 @@ function renderLatestWatchSummaryCard(status) {
       </div>
     </div>
   </section>`;
+}
+
+function renderOpenWatchFolderButton() {
+  return `<a class="button outline" href="/watch/open-folder">watch 폴더 열기</a>`;
+}
+
+function renderTodaySummaryStatusCard(status, watchDir) {
+  const processedAt = status.processedAt ? new Date(status.processedAt).toLocaleString("ko-KR") : "-";
+  const summaryButton = status.summaryId
+    ? `<a class="button" href="/summaries/${escapeHtml(status.summaryId)}">오늘 요약 보기</a>`
+    : "";
+  const missingNotice = status.hasSummary ? "" : `
+    <p class="notice warning">아직 오늘 TXT가 처리되지 않았습니다.</p>
+    <p class="muted">오늘 카카오톡 TXT가 아직 처리되지 않았습니다. 카카오톡에서 대화 내용을 내보낸 뒤 watch 폴더에 저장해 주세요.</p>
+  `;
+
+  return `<section class="today-status-card" data-today-status-card>
+    <h2>오늘 요약 상태</h2>
+    <div class="stats-grid">
+      <div class="stat"><span>오늘 날짜</span><strong>${escapeHtml(status.date)}</strong></div>
+      <div class="stat"><span>요약 생성 여부</span><strong>${status.hasSummary ? "생성됨" : "미처리"}</strong></div>
+      <div class="stat"><span>오늘 처리된 TXT</span><strong>${escapeHtml(status.filename || "-")}</strong></div>
+      <div class="stat"><span>마지막 처리 시각</span><strong>${escapeHtml(processedAt)}</strong></div>
+    </div>
+    ${missingNotice}
+    <div class="button-row">
+      ${summaryButton}
+      ${renderOpenWatchFolderButton()}
+    </div>
+    <code class="folder-path">${escapeHtml(watchDir || WATCH_DIR)}</code>
+  </section>`;
+}
+
+function renderKakaoExportChecklist() {
+  return `<details class="kakao-export-checklist" data-kakao-export-checklist>
+    <summary>카카오톡 TXT 내보내기 방법</summary>
+    <div class="details-body">
+      <ol class="list">
+        <li>PC 카카오톡에서 미국주식 오픈채팅방 열기</li>
+        <li>채팅방 메뉴에서 대화 내용 내보내기 선택</li>
+        <li>TXT 파일로 저장</li>
+        <li>저장 위치를 watch 폴더로 지정</li>
+        <li>잠시 후 /watch에서 처리 결과 확인</li>
+        <li>최신 요약 보기 클릭</li>
+      </ol>
+    </div>
+  </details>`;
+}
+
+function renderRecentSevenDayStatus(items) {
+  return `<div class="summary-card recent-seven-day-status" data-recent-seven-day-status>
+    <h2>최근 7일 처리 현황</h2>
+    <div class="recent-day-list">
+      ${items.map((item) => `<div class="recent-day-item">
+        <span>${item.summaryId ? `<a href="/summaries/${escapeHtml(item.summaryId)}">${escapeHtml(item.date)}</a>` : escapeHtml(item.date)}</span>
+        <span class="status-pill ${item.hasSummary ? "done" : "missing"}">${item.hasSummary ? "처리 완료" : "처리 없음"}</span>
+      </div>`).join("")}
+    </div>
+  </div>`;
 }
 
 function renderUploadTable(uploads) {
@@ -537,6 +612,9 @@ function renderWatchStatus() {
   const rows = status.recent || [];
   const geminiConfig = getGeminiConfig();
   const geminiActive = canUseGemini(geminiConfig);
+  const summaries = storage.listSummaries();
+  const todayStatus = getTodaySummaryStatus({ summaries, watchRecords: rows });
+  const recentSevenDays = getRecentSevenDayStatus({ summaries });
   return layout("감시 폴더 상태", `
     <section>
       <div class="title-row">
@@ -551,6 +629,8 @@ function renderWatchStatus() {
         <p><strong>중복 파일:</strong> 이미 처리한 파일은 skipped_duplicate 상태로 기록합니다.</p>
         <p class="muted">Windows 시작 시 자동 실행은 README의 install-startup 스크립트 안내를 참고하세요.</p>
       </div>
+      ${renderTodaySummaryStatusCard(todayStatus, status.watchDir)}
+      ${renderKakaoExportChecklist()}
       ${renderWatchLatestResult(status)}
       <div class="stats-grid">
         <div class="stat"><span>감시 폴더</span><strong>${escapeHtml(status.watchDir)}</strong></div>
@@ -565,6 +645,7 @@ function renderWatchStatus() {
         <p><strong>처리 완료 폴더:</strong> ${escapeHtml(status.processedDir)}</p>
         <p><strong>실패 폴더:</strong> ${escapeHtml(status.failedDir)}</p>
       </div>
+      ${renderRecentSevenDayStatus(recentSevenDays)}
     </section>
     <section>
       <h2>최근 감시 폴더 처리 기록</h2>
@@ -1032,11 +1113,30 @@ function handleAllTopMentionsExport(res) {
   );
 }
 
+async function handleOpenWatchFolder(res) {
+  const result = await openFolder(WATCH_DIR);
+  const message = result.ok
+    ? `<p class="notice">watch 폴더를 파일 탐색기로 열었습니다.</p>`
+    : `<p class="notice warning">watch 폴더를 자동으로 열지 못했습니다. 아래 경로를 파일 탐색기에 붙여넣어 주세요.</p><p class="muted">${escapeHtml(result.error || "")}</p>`;
+  return response(res, 200, layout("watch 폴더 열기", `
+    <section>
+      <h2>watch 폴더 열기</h2>
+      ${message}
+      <code class="folder-path">${escapeHtml(WATCH_DIR)}</code>
+      <div class="button-row">
+        <a class="button" href="/watch">감시 폴더 상태로 돌아가기</a>
+        <a class="button secondary" href="/">홈으로</a>
+      </div>
+    </section>
+  `));
+}
+
 async function router(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (req.method === "GET" && url.pathname === "/") return response(res, 200, renderHome());
   if (req.method === "GET" && url.pathname === "/uploads") return response(res, 200, renderUploads());
+  if (req.method === "GET" && url.pathname === "/watch/open-folder") return handleOpenWatchFolder(res);
   if (req.method === "GET" && url.pathname === "/watch") return response(res, 200, renderWatchStatus());
   if (req.method === "GET" && url.pathname.startsWith("/uploads/")) return response(res, 200, renderUploadDetail(url.pathname.split("/")[2]));
   if (req.method === "GET" && url.pathname === "/summaries") return response(res, 200, renderSummaries());
