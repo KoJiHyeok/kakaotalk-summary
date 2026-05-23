@@ -8,6 +8,13 @@ const { getWatchStatus, startWatchFolder, WATCH_DIR } = require("./watchService"
 const { getTodaySummaryStatus, getRecentSevenDayStatus } = require("./dailyStatus");
 const { openFolder } = require("./folderOpener");
 const { buildTickerStats, findTickerStats, normalizeTickerQuery } = require("./tickerStats");
+const {
+  buildAnalyticsSummary,
+  buildDailyMessageSeries,
+  buildMarketMoodTable,
+  buildDailyTopMentions,
+  buildGeminiStatusTable
+} = require("./analytics");
 const { getCollectorStatuses, manualUploadCollector, SAFE_COLLECTION_NOTICE } = require("./collectors");
 const { getGeminiConfig, canUseGemini } = require("./geminiClient");
 const {
@@ -166,6 +173,7 @@ function layout(title, body) {
       <a href="/">업로드</a>
       <a href="/summaries">날짜별 요약</a>
       <a href="/tickers">종목 추이</a>
+      <a href="/analytics">분석 대시보드</a>
       <a href="/collectors">수집 방식</a>
       <a href="/uploads">업로드 기록</a>
       <a href="/watch">감시 폴더</a>
@@ -276,6 +284,10 @@ function renderHome(message = "") {
         <a class="quick-card" href="/tickers">
           <strong>종목 언급 추이 보기</strong>
           <span>저장된 요약 데이터 기준으로 티커와 자산의 날짜별 언급량을 확인합니다.</span>
+        </a>
+        <a class="quick-card" href="/analytics">
+          <strong>분석 대시보드</strong>
+          <span>전체 기간 메시지 수, 시장 분위기, Gemini 상태, TOP 종목을 한눈에 비교합니다.</span>
         </a>
         <a class="quick-card" href="/watch">
           <strong>감시 폴더 상태</strong>
@@ -611,6 +623,7 @@ function renderSummaries() {
           <button type="button" class="chip" data-summary-filter="risk">리스크 ${counts.risk}</button>
         </div>
         <div class="button-row">
+          <a class="button" href="/analytics">분석 대시보드</a>
           <a class="button" href="/tickers">종목 추이 보기</a>
           <a class="button outline" href="/summaries/export/top-mentions.csv">전체 TOP 종목 CSV 다운로드</a>
         </div>
@@ -781,6 +794,140 @@ function renderTickerDetail(tickerOrAlias) {
           <td>${item.summaryId ? `<a class="button" href="/summaries/${escapeHtml(item.summaryId)}">요약 보기</a>` : "-"}</td>
         </tr>`).join("")}</tbody>
       </table></div>
+    </section>
+  `);
+}
+
+function renderAnalyticsMessageChart(series) {
+  if (!series.length) return `<p class="muted">분석할 날짜별 메시지 데이터가 없습니다.</p>`;
+  const max = Math.max(...series.map((item) => Number(item.messageCount || 0)), 1);
+  return `<div class="bar-chart">
+    ${series.map((item) => {
+      const count = Number(item.messageCount || 0);
+      const width = Math.max(4, Math.round((count / max) * 100));
+      return `<a class="bar-row" href="/summaries/${escapeHtml(item.summaryId)}" style="text-decoration:none;color:inherit">
+        <span>${escapeHtml(item.date)}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>
+        <span class="bar-count">${count.toLocaleString("ko-KR")}</span>
+      </a>
+      <p class="meta-small">제외 ${Number(item.excludedMessageCount || 0).toLocaleString("ko-KR")} · 파싱 실패 ${Number(item.skippedLineCount || 0).toLocaleString("ko-KR")}</p>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderAnalyticsMoodTable(rows) {
+  if (!rows.length) return `<p class="muted">시장 분위기 데이터가 없습니다.</p>`;
+  return `<div class="table-wrapper"><table>
+    <thead><tr><th>날짜</th><th>시장 분위기</th><th>한 줄 결론</th><th>TOP 3 종목/자산</th><th></th></tr></thead>
+    <tbody>${rows.map((row) => `<tr>
+      <td>${escapeHtml(row.date)}</td>
+      <td>${escapeHtml(row.mood || "정보 없음")}</td>
+      <td>${escapeHtml(row.conclusion || "-")}</td>
+      <td>${row.topMentions.length ? row.topMentions.map((item) => badge(item.ticker, item.category, String(item.count || 0))).join(" ") : "-"}</td>
+      <td>${row.summaryId ? `<a class="button" href="/summaries/${escapeHtml(row.summaryId)}">상세 보기</a>` : "-"}</td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+function renderAnalyticsDailyTopCards(rows) {
+  if (!rows.length) return `<p class="muted">날짜별 TOP 종목 데이터가 없습니다.</p>`;
+  return `<div class="summary-card-grid">
+    ${rows.map((row) => `<article class="digest-card">
+      <div class="digest-card-header">
+        <div class="digest-date">${escapeHtml(row.date)}</div>
+        ${row.summaryId ? `<a class="button outline" href="/summaries/${escapeHtml(row.summaryId)}">요약</a>` : ""}
+      </div>
+      <div class="digest-badges">${row.topMentions.length ? row.topMentions.map((item) => badge(item.ticker, item.category, String(item.count || 0))).join(" ") : `<span class="muted">TOP 종목 없음</span>`}</div>
+    </article>`).join("")}
+  </div>`;
+}
+
+function renderAnalyticsGeminiTable(rows) {
+  if (!rows.length) return `<p class="muted">Gemini 상태 데이터가 없습니다.</p>`;
+  return `<div class="table-wrapper"><table>
+    <thead><tr><th>날짜</th><th>상태</th><th>모델</th><th>생성 시각</th><th>오류</th><th></th></tr></thead>
+    <tbody>${rows.map((row) => `<tr>
+      <td>${escapeHtml(row.date)}</td>
+      <td>${escapeHtml(row.label)}</td>
+      <td>${escapeHtml(row.model || "-")}</td>
+      <td>${row.generatedAt ? escapeHtml(new Date(row.generatedAt).toLocaleString("ko-KR")) : "-"}</td>
+      <td>${escapeHtml(compactText(row.error || "", 90) || "-")}</td>
+      <td>${row.summaryId ? `<a class="button" href="/summaries/${escapeHtml(row.summaryId)}">상세 보기</a>` : "-"}</td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+function renderAnalyticsTopTickerTable(stats) {
+  if (!stats.length) return `<p class="muted">전체 TOP 종목/자산 데이터가 없습니다.</p>`;
+  return `<div class="table-wrapper"><table>
+    <thead><tr><th>순위</th><th>티커</th><th>카테고리</th><th>전체 언급 수</th><th>언급 날짜 수</th><th>최근 언급일</th><th></th></tr></thead>
+    <tbody>${stats.slice(0, 20).map((stat, index) => `<tr>
+      <td>${index + 1}</td>
+      <td>${badge(stat.ticker, stat.category)}</td>
+      <td>${escapeHtml(tickerCategoryLabel(stat.category))}</td>
+      <td>${Number(stat.totalCount || 0).toLocaleString("ko-KR")}</td>
+      <td>${Number(stat.dateCount || 0).toLocaleString("ko-KR")}</td>
+      <td>${escapeHtml(stat.recentDate || "-")}</td>
+      <td><a class="button" href="/tickers/${encodeURIComponent(stat.ticker)}">추이 보기</a></td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
+
+function renderAnalytics() {
+  const summaries = storage.listSummaries();
+  const uploads = storage.listUploads();
+  const summary = buildAnalyticsSummary(summaries, { uploads });
+  const messageSeries = buildDailyMessageSeries(summaries, { uploads });
+  const moodRows = buildMarketMoodTable(summaries, { uploads });
+  const dailyTopRows = buildDailyTopMentions(summaries, { uploads });
+  const geminiRows = buildGeminiStatusTable(summaries, { uploads });
+  const tickerStats = buildTickerStats(summaries, { uploads });
+  const topMentionText = summary.topMention
+    ? `${summary.topMention.ticker} ${Number(summary.topMention.totalCount || 0).toLocaleString("ko-KR")}회`
+    : "-";
+  const busiestText = summary.busiestDate
+    ? `${summary.busiestDate.date} ${Number(summary.busiestDate.messageCount || 0).toLocaleString("ko-KR")}개`
+    : "-";
+
+  return layout("분석 대시보드", `
+    <section>
+      <div class="title-row">
+        <h2>분석 대시보드</h2>
+        <div class="button-row">
+          <a class="button outline" href="/summaries">날짜별 요약</a>
+          <a class="button outline" href="/tickers">종목 추이</a>
+        </div>
+      </div>
+      <p class="muted">저장된 날짜별 summary와 업로드 메타데이터를 기준으로 전체 기간을 비교합니다. 원본 TXT 전체를 다시 분석하지 않습니다.</p>
+      <div class="stats-grid">
+        <div class="stat"><span>분석 대상 날짜 수</span><strong>${Number(summary.dateCount || 0).toLocaleString("ko-KR")}</strong></div>
+        <div class="stat"><span>전체 메시지 수</span><strong>${Number(summary.totalMessageCount || 0).toLocaleString("ko-KR")}</strong></div>
+        <div class="stat"><span>전체 제외 메시지 수</span><strong>${Number(summary.totalExcludedMessageCount || 0).toLocaleString("ko-KR")}</strong></div>
+        <div class="stat"><span>전체 파싱 실패 수</span><strong>${Number(summary.totalSkippedLineCount || 0).toLocaleString("ko-KR")}</strong></div>
+        <div class="stat"><span>Gemini 요약 생성 날짜 수</span><strong>${Number(summary.geminiGeneratedDateCount || 0).toLocaleString("ko-KR")}</strong></div>
+        <div class="stat"><span>가장 대화가 많았던 날짜</span><strong>${escapeHtml(busiestText)}</strong></div>
+        <div class="stat"><span>가장 많이 언급된 종목/자산</span><strong>${escapeHtml(topMentionText)}</strong></div>
+      </div>
+    </section>
+    <section>
+      <h2>날짜별 메시지 수</h2>
+      ${renderAnalyticsMessageChart(messageSeries)}
+    </section>
+    <section>
+      <h2>날짜별 시장 분위기</h2>
+      ${renderAnalyticsMoodTable(moodRows)}
+    </section>
+    <section>
+      <h2>날짜별 TOP 종목 변화</h2>
+      ${renderAnalyticsDailyTopCards(dailyTopRows)}
+    </section>
+    <section>
+      <h2>Gemini 상태 현황</h2>
+      ${renderAnalyticsGeminiTable(geminiRows)}
+    </section>
+    <section>
+      <h2>전체 TOP 종목/자산 순위</h2>
+      ${renderAnalyticsTopTickerTable(tickerStats)}
     </section>
   `);
 }
@@ -1372,6 +1519,7 @@ async function router(req, res) {
   if (req.method === "GET" && url.pathname === "/watch/open-folder") return handleOpenWatchFolder(res);
   if (req.method === "GET" && url.pathname === "/watch") return response(res, 200, renderWatchStatus());
   if (req.method === "GET" && url.pathname === "/collectors") return response(res, 200, renderCollectors());
+  if (req.method === "GET" && url.pathname === "/analytics") return response(res, 200, renderAnalytics());
   if (req.method === "GET" && url.pathname === "/tickers") return response(res, 200, renderTickers(url));
   if (req.method === "GET" && url.pathname.startsWith("/tickers/")) return response(res, 200, renderTickerDetail(decodeURIComponent(url.pathname.split("/")[2] || "")));
   if (req.method === "GET" && url.pathname.startsWith("/uploads/")) return response(res, 200, renderUploadDetail(url.pathname.split("/")[2]));
