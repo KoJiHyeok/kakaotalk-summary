@@ -1,8 +1,8 @@
 const http = require("http");
 const path = require("path");
-const { parseKakaoTalkTxt, groupMessagesByDate } = require("./parser");
-const { generateDailySummary } = require("./summarizer");
 const { categorizeTicker } = require("./analyzer");
+const { processTxtContent } = require("./processor");
+const { getWatchStatus, startWatchFolder } = require("./watchService");
 const storage = require("./storage");
 
 const PORT = Number(process.env.PORT || 3000);
@@ -66,7 +66,7 @@ function layout(title, body) {
     .stats-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; max-width:100%; }
     .stat { border:1px solid var(--line); border-radius:8px; background:var(--soft); padding:14px; min-width:0; }
     .stat span { display:block; color:var(--muted); font-size:12px; margin-bottom:5px; }
-    .stat strong { font-size:20px; }
+    .stat strong { font-size:20px; overflow-wrap:anywhere; }
     .button-row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 16px; }
     .button.secondary { background:#475569; }
     .button.disabled { background:#cbd5e1; color:#64748b; pointer-events:none; }
@@ -126,6 +126,7 @@ function layout(title, body) {
       <a href="/">업로드</a>
       <a href="/summaries">날짜별 요약</a>
       <a href="/uploads">업로드 기록</a>
+      <a href="/watch">감시 폴더</a>
     </nav>
   </header>
   <main>${body}</main>
@@ -441,6 +442,44 @@ function renderUploads() {
     <section>
       <h2>업로드 기록</h2>
       ${uploads.length ? renderUploadTable(uploads) : `<p class="muted">아직 업로드 기록이 없습니다.</p>`}
+    </section>
+  `);
+}
+
+function renderWatchStatus() {
+  const status = getWatchStatus();
+  const rows = status.recent || [];
+  return layout("감시 폴더 상태", `
+    <section>
+      <div class="title-row">
+        <h2>감시 폴더 상태</h2>
+        ${renderNoticeDisclosure()}
+      </div>
+      <p class="muted">이 기능은 카카오톡 자동 수집이 아니라, 로컬 폴더에 사용자가 넣은 TXT 파일을 자동 처리하는 방식입니다.</p>
+      <div class="stats-grid">
+        <div class="stat"><span>감시 폴더</span><strong>${escapeHtml(status.watchDir)}</strong></div>
+        <div class="stat"><span>처리 완료</span><strong>${status.processedCount}</strong></div>
+        <div class="stat"><span>중복 제외</span><strong>${status.duplicateCount}</strong></div>
+        <div class="stat"><span>실패 파일</span><strong>${status.failedCount}</strong></div>
+        <div class="stat"><span>마지막 처리</span><strong>${status.lastProcessedAt ? escapeHtml(new Date(status.lastProcessedAt).toLocaleString("ko-KR")) : "없음"}</strong></div>
+      </div>
+      <div class="soft-box">
+        <p><strong>처리 완료 폴더:</strong> ${escapeHtml(status.processedDir)}</p>
+        <p><strong>실패 폴더:</strong> ${escapeHtml(status.failedDir)}</p>
+      </div>
+    </section>
+    <section>
+      <h2>최근 감시 폴더 처리 기록</h2>
+      ${rows.length ? `<div class="table-wrapper"><table>
+        <thead><tr><th>파일명</th><th>상태</th><th>완료 시간</th><th>요약</th><th>메시지</th></tr></thead>
+        <tbody>${rows.map((record) => `<tr>
+          <td>${escapeHtml(record.filename)}</td>
+          <td>${escapeHtml(record.status)}</td>
+          <td>${record.completedAt ? escapeHtml(new Date(record.completedAt).toLocaleString("ko-KR")) : "-"}</td>
+          <td>${record.uploadId ? `<a class="button" href="/uploads/${escapeHtml(record.uploadId)}">결과 보기</a>` : `${record.summaryCount || 0}개`}</td>
+          <td>${escapeHtml(record.errorMessage || "")}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>` : `<p class="muted">아직 감시 폴더 처리 기록이 없습니다.</p>`}
     </section>
   `);
 }
@@ -770,37 +809,17 @@ async function handleUpload(req, res) {
       return;
     }
 
-    const content = file.content.toString("utf8");
     uploadContext = { filename: file.filename, byteLength: file.content.length };
-    const parseResult = parseKakaoTalkTxt(content);
-    uploadContext = { ...uploadContext, stats: parseResult.stats };
-    const grouped = groupMessagesByDate(parseResult.messages || []);
-    const mediaCounts = countByDate(parseResult.mediaMessages || []);
-    const systemCounts = countByDate(parseResult.systemMessages || []);
-    const allDates = Array.from(new Set((parseResult.allMessages || []).map((message) => message.date).filter(Boolean))).sort();
-    const dailySummaries = allDates.map((date) => {
-      const messages = grouped[date] || [];
-      const counts = {
-        mediaMessageCount: mediaCounts[date] || 0,
-        systemMessageCount: systemCounts[date] || 0
-      };
-      try {
-        return generateDailySummary(date, messages, counts);
-      } catch (error) {
+    const saved = await processTxtContent({
+      content: file.content.toString("utf8"),
+      originalFilename: file.filename,
+      source: "web_upload",
+      onDailyError: (error, context) => {
         logDetailedError("Daily summary generation failed", error, {
           ...uploadContext,
-          date,
-          messageCount: messages.length,
-          counts
+          ...context
         });
-        return createFailedDailySummary(date, messages, counts, error);
       }
-    });
-
-    const saved = storage.saveUploadResult({
-      originalFilename: file.filename,
-      parseResult,
-      dailySummaries
     });
 
     redirect(res, `/uploads/${saved.upload.id}`);
@@ -815,6 +834,7 @@ async function router(req, res) {
 
   if (req.method === "GET" && url.pathname === "/") return response(res, 200, renderHome());
   if (req.method === "GET" && url.pathname === "/uploads") return response(res, 200, renderUploads());
+  if (req.method === "GET" && url.pathname === "/watch") return response(res, 200, renderWatchStatus());
   if (req.method === "GET" && url.pathname.startsWith("/uploads/")) return response(res, 200, renderUploadDetail(url.pathname.split("/")[2]));
   if (req.method === "GET" && url.pathname === "/summaries") return response(res, 200, renderSummaries());
   if (req.method === "GET" && url.pathname.startsWith("/summaries/")) return response(res, 200, renderDetail(url.pathname.split("/")[2]));
@@ -831,6 +851,8 @@ const server = http.createServer((req, res) => {
 });
 
 if (require.main === module) {
+  const watcher = process.env.WATCH_ENABLED === "false" ? null : startWatchFolder();
+  if (watcher) server.on("close", () => watcher.stop());
   server.listen(PORT, () => {
     console.log(`KakaoTalk summary MVP running at http://localhost:${PORT}`);
   });

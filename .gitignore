@@ -1,4 +1,11 @@
 data/
 node_modules/
+*.txt
 .DS_Store
 Thumbs.db
+watch/*.txt
+watch/processed/*
+watch/failed/*
+!watch/.gitkeep
+!watch/processed/.gitkeep
+!watch/failed/.gitkeep

@@ -24,6 +24,12 @@ node src/server.js
 http://localhost:3000
 ```
 
+서버가 실행되면 기본적으로 `watch/` 폴더도 함께 감시합니다. 감시 기능을 끄고 싶으면 다음처럼 실행합니다.
+
+```bash
+WATCH_ENABLED=false node src/server.js
+```
+
 포트를 바꾸려면 환경 변수 `PORT`를 지정합니다.
 
 ```bash
@@ -36,6 +42,13 @@ PowerShell에서는 다음처럼 실행합니다.
 
 ```powershell
 $env:PORT=3000
+node src/server.js
+```
+
+감시 기능을 끄고 실행하려면 다음처럼 지정합니다.
+
+```powershell
+$env:WATCH_ENABLED="false"
 node src/server.js
 ```
 
@@ -65,6 +78,39 @@ node --test
 
 날짜 구분선 이후의 `[작성자] [오전/오후 h:mm] 메시지` 형식을 우선 처리합니다. 작성자 이름에 공백, 숫자, 특수문자가 포함되어도 가능한 한 파싱합니다.
 
+## watch 폴더 자동 처리
+
+2차 기능으로 로컬 감시 폴더 처리를 지원합니다. 이것은 카카오톡 자동 수집이 아니라, 사용자가 직접 내보낸 TXT 파일을 로컬 폴더에 넣으면 서버가 자동으로 처리하는 기능입니다.
+
+사용 방법:
+
+1. 서버를 실행합니다.
+2. `watch/` 폴더에 카카오톡 TXT 파일을 넣습니다.
+3. 서버가 파일 크기와 수정 시간이 안정된 뒤 자동으로 처리합니다.
+4. 성공한 파일은 `watch/processed/`로 이동합니다.
+5. 실패한 파일은 `watch/failed/`로 이동합니다.
+6. 처리 상태는 `/watch` 페이지에서 확인합니다.
+
+감시 폴더:
+
+```text
+watch/
+```
+
+처리 완료 폴더:
+
+```text
+watch/processed/
+```
+
+실패 폴더:
+
+```text
+watch/failed/
+```
+
+중복 처리는 파일 SHA-256 해시와 크기를 기준으로 방지합니다. 이미 처리된 파일과 동일한 해시의 TXT가 다시 들어오면 요약을 새로 만들지 않고 `skipped_duplicate` 상태로 기록한 뒤 `watch/processed/`로 이동합니다.
+
 ## 현재 주요 기능
 
 - 카카오톡 TXT 파일 업로드
@@ -82,6 +128,9 @@ node --test
 - SECTION 01~06 리포트 구조
 - 주의 사항 disclosure
 - 용어 보기 details
+- 로컬 `watch/` 폴더 자동 처리
+- 처리 완료 파일과 실패 파일 분리 이동
+- 감시 폴더 상태 페이지
 - 업로드 메타데이터와 날짜별 요약 결과 저장
 
 ## 저장 위치
@@ -102,6 +151,8 @@ data/store.json
 - 시스템/첨부 제외 메시지 수
 - 파싱 실패 수와 샘플
 - 날짜별 요약 결과
+- 감시 폴더 처리 기록
+- 감시 파일 해시, 크기, 수정 시간, 성공/실패 상태
 
 원본 TXT 전체 파일을 별도 보관하지 않고, 파싱 결과와 요약 중심으로 저장합니다.
 
@@ -126,7 +177,7 @@ samples/kakaotalk_sample.txt
 ## 현재 한계
 
 - 요약은 LLM이 아닌 규칙 기반 요약입니다.
-- 카카오톡 자동 수집 기능은 지원하지 않습니다.
+- 카카오톡 자동 수집 기능은 지원하지 않습니다. `watch/` 기능은 로컬 폴더 기반 자동 처리일 뿐입니다.
 - 카카오톡 크롤링, 보안 우회, 비공식 자동 읽기 기능은 포함하지 않습니다.
 - 이 결과는 실제 투자 조언이 아니라 채팅방 대화 요약입니다.
 - 카카오톡 TXT 내보내기 형식이 달라지면 파서 보강이 필요할 수 있습니다.
@@ -152,4 +203,3 @@ samples/kakaotalk_sample.txt
 - 새 ingestion 모듈이 TXT 문자열 또는 `{ date, time, author, text }` 형태의 메시지 배열을 생성
 - `src/parser.js`의 파싱 결과 스키마와 호환되도록 변환
 - `groupMessagesByDate()`, `generateDailySummary()`, `storage.saveUploadResult()` 흐름에 연결
-

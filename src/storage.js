@@ -34,7 +34,28 @@ function normalizeUpload(upload) {
     excludedMessageCount,
     skippedLineSamples: Array.isArray(upload.skippedLineSamples) ? upload.skippedLineSamples.slice(0, 10) : [],
     failedSummaries: Array.isArray(upload.failedSummaries) ? upload.failedSummaries : [],
-    summaryIds: Array.isArray(upload.summaryIds) ? upload.summaryIds : []
+    summaryIds: Array.isArray(upload.summaryIds) ? upload.summaryIds : [],
+    source: upload.source || "web_upload",
+    sourcePath: upload.sourcePath || "",
+    watchFingerprint: upload.watchFingerprint || ""
+  };
+}
+
+function normalizeWatchFile(record) {
+  return {
+    id: record.id || crypto.randomUUID(),
+    filename: record.filename || "unknown.txt",
+    originalPath: record.originalPath || "",
+    finalPath: record.finalPath || "",
+    status: record.status || "unknown",
+    size: toNumber(record.size),
+    mtimeMs: toNumber(record.mtimeMs),
+    sha256: record.sha256 || "",
+    uploadId: record.uploadId || "",
+    summaryCount: toNumber(record.summaryCount),
+    errorMessage: record.errorMessage || "",
+    createdAt: record.createdAt || new Date(0).toISOString(),
+    completedAt: record.completedAt || ""
   };
 }
 
@@ -89,7 +110,8 @@ function normalizeSummaryRow(row) {
 function normalizeStore(store) {
   return {
     uploads: Array.isArray(store.uploads) ? store.uploads.map(normalizeUpload) : [],
-    summaries: Array.isArray(store.summaries) ? store.summaries.map(normalizeSummaryRow) : []
+    summaries: Array.isArray(store.summaries) ? store.summaries.map(normalizeSummaryRow) : [],
+    watchFiles: Array.isArray(store.watchFiles) ? store.watchFiles.map(normalizeWatchFile) : []
   };
 }
 
@@ -103,7 +125,7 @@ function writeStore(store) {
   fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
 }
 
-function saveUploadResult({ originalFilename, parseResult, dailySummaries }) {
+function saveUploadResult({ originalFilename, parseResult, dailySummaries, source = "web_upload", sourcePath = "", watchFingerprint = "" }) {
   const store = readStore();
   const uploadId = crypto.randomUUID();
   const uploadedAt = new Date().toISOString();
@@ -136,7 +158,10 @@ function saveUploadResult({ originalFilename, parseResult, dailySummaries }) {
     excludedMessageCount: toNumber(safeStats.excludedMessageCount, toNumber(safeStats.systemMessageCount) + toNumber(safeStats.mediaMessageCount)),
     skippedLineSamples: Array.isArray(parseResult?.skippedLineSamples) ? parseResult.skippedLineSamples.slice(0, 10) : [],
     failedSummaries,
-    summaryIds: summaryRows.map((summary) => summary.id)
+    summaryIds: summaryRows.map((summary) => summary.id),
+    source,
+    sourcePath,
+    watchFingerprint
   });
 
   store.uploads.unshift(upload);
@@ -166,6 +191,31 @@ function getSummary(summaryId) {
   return readStore().summaries.find((summary) => summary.id === summaryId) || null;
 }
 
+function listWatchFiles() {
+  return readStore().watchFiles.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+function hasProcessedWatchFile({ sha256, size }) {
+  if (!sha256) return false;
+  return readStore().watchFiles.some((record) =>
+    record.sha256 === sha256 &&
+    (!size || record.size === size) &&
+    ["processed", "skipped_duplicate"].includes(record.status)
+  );
+}
+
+function recordWatchFile(record) {
+  const store = readStore();
+  const normalized = normalizeWatchFile({
+    ...record,
+    id: record.id || crypto.randomUUID(),
+    createdAt: record.createdAt || new Date().toISOString()
+  });
+  store.watchFiles.unshift(normalized);
+  writeStore(store);
+  return normalized;
+}
+
 module.exports = {
   DATA_DIR,
   STORE_PATH,
@@ -174,5 +224,8 @@ module.exports = {
   listSummaries,
   getUpload,
   getSummariesByUpload,
-  getSummary
+  getSummary,
+  listWatchFiles,
+  hasProcessedWatchFile,
+  recordWatchFile
 };
