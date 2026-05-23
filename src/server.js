@@ -230,6 +230,7 @@ function renderNoticeDisclosure() {
 function renderHome(message = "") {
   const uploads = storage.listUploads().slice(0, 5);
   const geminiConfig = getGeminiConfig();
+  const watchStatus = getWatchStatus();
   return layout("TXT 업로드", `
     <section>
       <h2>바로가기</h2>
@@ -253,6 +254,7 @@ function renderHome(message = "") {
       </div>
       <p class="muted">서버 주소: http://localhost:${PORT} · Gemini: ${canUseGemini(geminiConfig) ? "활성" : "비활성"} · 모델: ${escapeHtml(geminiConfig.model)}</p>
     </section>
+    ${renderLatestWatchSummaryCard(watchStatus)}
     <section>
       <h2>TXT 파일 업로드</h2>
       ${message}
@@ -267,6 +269,34 @@ function renderHome(message = "") {
       ${uploads.length ? renderUploadTable(uploads) : `<p class="muted">아직 업로드 기록이 없습니다.</p>`}
     </section>
   `);
+}
+
+function renderLatestSummaryButton(record, label = "최신 요약 보기") {
+  if (!record?.latestSummaryId) return "";
+  return `<a class="button" href="/summaries/${escapeHtml(record.latestSummaryId)}">${escapeHtml(label)}</a>`;
+}
+
+function renderLatestWatchSummaryCard(status) {
+  const record = status?.latestRecord;
+  if (!record) {
+    return `<section>
+      <h2>최근 처리된 요약</h2>
+      <p class="muted">아직 watch 폴더 처리 기록이 없습니다.</p>
+      <a class="button secondary" href="/watch">감시 폴더 상태 보기</a>
+    </section>`;
+  }
+  return `<section>
+    <h2>최근 처리된 요약</h2>
+    <div class="soft-box">
+      <p><strong>최근 처리 파일:</strong> ${escapeHtml(record.filename)}</p>
+      <p><strong>처리 상태:</strong> ${escapeHtml(record.status)}</p>
+      <p><strong>최근 요약 날짜:</strong> ${escapeHtml(record.latestSummaryDate || "없음")}</p>
+      <div class="button-row">
+        ${renderLatestSummaryButton(record)}
+        <a class="button secondary" href="/watch">감시 폴더 상태 보기</a>
+      </div>
+    </div>
+  </section>`;
 }
 
 function renderUploadTable(uploads) {
@@ -519,6 +549,7 @@ function renderWatchStatus() {
         <p><strong>처리 실패:</strong> 실패한 파일은 watch/failed 폴더로 이동하고 실패 이유를 기록합니다.</p>
         <p><strong>중복 파일:</strong> 이미 처리한 파일은 skipped_duplicate 상태로 기록합니다.</p>
       </div>
+      ${renderWatchLatestResult(status)}
       <div class="stats-grid">
         <div class="stat"><span>감시 폴더</span><strong>${escapeHtml(status.watchDir)}</strong></div>
         <div class="stat"><span>처리 완료</span><strong>${status.processedCount}</strong></div>
@@ -536,17 +567,52 @@ function renderWatchStatus() {
     <section>
       <h2>최근 감시 폴더 처리 기록</h2>
       ${rows.length ? `<div class="table-wrapper"><table>
-        <thead><tr><th>파일명</th><th>상태</th><th>완료 시간</th><th>요약</th><th>메시지</th></tr></thead>
+        <thead><tr><th>파일명</th><th>상태</th><th>처리 시각</th><th>날짜 수</th><th>요약 수</th><th>최신 요약</th><th>메시지</th></tr></thead>
         <tbody>${rows.map((record) => `<tr>
           <td>${escapeHtml(record.filename)}</td>
           <td>${escapeHtml(record.status)}</td>
-          <td>${record.completedAt ? escapeHtml(new Date(record.completedAt).toLocaleString("ko-KR")) : "-"}</td>
-          <td>${record.uploadId ? `<a class="button" href="/uploads/${escapeHtml(record.uploadId)}">결과 보기</a>` : `${record.summaryCount || 0}개`}</td>
+          <td>${record.processedAt || record.completedAt ? escapeHtml(new Date(record.processedAt || record.completedAt).toLocaleString("ko-KR")) : "-"}</td>
+          <td>${record.detectedDateCount || 0}</td>
+          <td>${record.summaryCount || 0}</td>
+          <td>${record.latestSummaryId ? `<a class="button" href="/summaries/${escapeHtml(record.latestSummaryId)}">${escapeHtml(record.latestSummaryDate || "보기")}</a>` : "-"}</td>
           <td>${escapeHtml(record.errorMessage || "")}</td>
         </tr>`).join("")}</tbody>
       </table></div>` : `<p class="muted">아직 감시 폴더 처리 기록이 없습니다.</p>`}
     </section>
   `);
+}
+
+function renderWatchLatestResult(status) {
+  const record = status.latestRecord;
+  if (!record) {
+    return `<div class="summary-card">
+      <p class="summary-title">최근 처리 결과</p>
+      <p class="muted">아직 watch 폴더 처리 기록이 없습니다.</p>
+    </div>`;
+  }
+  const processedAt = record.processedAt || record.completedAt || record.createdAt || "";
+  const failure = record.status === "failed" ? `
+    <p class="notice warning">실패 사유: ${escapeHtml(record.errorMessage || "알 수 없는 오류")}</p>
+    <p class="muted">실패 파일 위치: ${escapeHtml(status.failedDir)}</p>
+    <p class="muted">파일 형식과 인코딩을 확인한 뒤 다시 watch 폴더에 넣어 재시도하세요.</p>
+  ` : "";
+  const duplicate = record.status === "skipped_duplicate" ? `
+    <p class="notice">skipped_duplicate: 이미 처리된 파일과 동일한 해시라 새 요약을 만들지 않았습니다.</p>
+  ` : "";
+  return `<div class="summary-card emphasis">
+    <p class="summary-title">최근 처리 결과</p>
+    <div class="stats-grid">
+      <div class="stat"><span>파일명</span><strong>${escapeHtml(record.filename)}</strong></div>
+      <div class="stat"><span>처리 상태</span><strong>${escapeHtml(record.status)}</strong></div>
+      <div class="stat"><span>처리 시각</span><strong>${processedAt ? escapeHtml(new Date(processedAt).toLocaleString("ko-KR")) : "-"}</strong></div>
+      <div class="stat"><span>감지 날짜 수</span><strong>${record.detectedDateCount || 0}</strong></div>
+      <div class="stat"><span>생성된 요약 수</span><strong>${record.summaryCount || 0}</strong></div>
+      <div class="stat"><span>최신 요약 날짜</span><strong>${escapeHtml(record.latestSummaryDate || "없음")}</strong></div>
+    </div>
+    ${failure}
+    ${duplicate}
+    <div class="button-row">${renderLatestSummaryButton(record)}</div>
+  </div>`;
 }
 
 function renderMessageList(items, emptyText) {

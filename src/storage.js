@@ -53,9 +53,13 @@ function normalizeWatchFile(record) {
     sha256: record.sha256 || "",
     uploadId: record.uploadId || "",
     summaryCount: toNumber(record.summaryCount),
+    detectedDateCount: toNumber(record.detectedDateCount),
+    latestSummaryId: record.latestSummaryId || "",
+    latestSummaryDate: record.latestSummaryDate || "",
     errorMessage: record.errorMessage || "",
     createdAt: record.createdAt || new Date(0).toISOString(),
-    completedAt: record.completedAt || ""
+    completedAt: record.completedAt || "",
+    processedAt: record.processedAt || record.completedAt || ""
   };
 }
 
