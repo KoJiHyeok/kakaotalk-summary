@@ -4,9 +4,33 @@
 
 자동 수집이나 카카오톡 크롤링은 포함하지 않습니다. 현재 버전은 사용자가 직접 내보낸 TXT 파일 업로드만 지원합니다.
 
-## 실행 방법
+## 처음 실행 방법
 
 Node.js 20 이상이 필요합니다.
+
+처음 한 번은 의존성을 설치합니다.
+
+```powershell
+npm install
+```
+
+이후 기본 실행은 다음 중 하나를 사용합니다.
+
+```powershell
+.\start-app.bat
+```
+
+또는 PowerShell 스크립트를 사용할 수 있습니다.
+
+```powershell
+.\start-app.ps1
+```
+
+브라우저가 자동으로 `http://localhost:3000`을 엽니다.
+
+## 기본 실행 방법
+
+터미널에서 직접 실행하려면 다음 명령을 사용합니다.
 
 ```bash
 npm start
@@ -45,6 +69,23 @@ $env:PORT=3000
 node src/server.js
 ```
 
+기본 규칙 기반 요약만 사용하려면 다음 실행 스크립트를 권장합니다.
+
+```powershell
+.\start-app.ps1
+```
+
+Gemini를 켜고 실행하려면 다음 스크립트를 사용합니다.
+
+```powershell
+.\start-gemini-app.ps1
+```
+
+`.bat` 파일을 더블클릭해서 실행할 수도 있습니다.
+
+- `start-app.bat`: 기본 규칙 기반 실행
+- `start-gemini-app.bat`: Gemini 활성화 실행
+
 감시 기능을 끄고 실행하려면 다음처럼 지정합니다.
 
 ```powershell
@@ -56,7 +97,16 @@ node src/server.js
 
 기본 동작은 기존 규칙 기반 요약입니다. Gemini API 키가 없거나 `GEMINI_ENABLED=true`가 아니면 Gemini 호출은 건너뛰며 앱은 정상 동작합니다.
 
-`.env.example`을 참고해 환경변수를 설정할 수 있습니다. 이 프로젝트는 `.env` 파일을 자동 로드하지 않으므로, PowerShell에서는 실행 전에 환경변수를 직접 지정합니다.
+`.env.example`을 참고해 `.env` 파일을 만들면 앱이 시작할 때 자동으로 읽습니다. `.env` 파일은 Git에 올리면 안 되며, `.gitignore`에 포함되어 있습니다.
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+`.env`에 실제 API 키를 넣은 뒤 `start-gemini-app.bat` 또는 `start-gemini-app.ps1`로 실행합니다. API 키를 실행 스크립트, README, 커밋에 직접 넣지 마세요.
+
+PowerShell 환경변수로 직접 지정할 수도 있습니다.
 
 ```powershell
 $env:GEMINI_ENABLED="true"
@@ -73,6 +123,12 @@ node src/server.js
 - `GEMINI_MAX_INPUT_CHARS`: Gemini 입력 프롬프트 최대 길이입니다. 기본값은 `20000`입니다.
 
 Gemini에는 원본 TXT 전체를 보내지 않습니다. 날짜, 메시지 수, 제외/파싱 실패 수, 규칙 기반 결론, 핵심 흐름, TOP 종목/자산, 종목별 요약 TOP 5, 체크포인트, 논쟁/리스크, 제한된 샘플 메시지 최대 50개만 전달합니다.
+
+API 키 보안 주의:
+
+- 실제 API 키는 `.env` 또는 Windows 사용자 환경변수에만 저장하세요.
+- `.env`는 커밋하지 마세요.
+- `start-gemini-app.bat`와 `start-gemini-app.ps1`에는 API 키를 저장하지 않습니다.
 
 테스트는 다음 명령으로 실행합니다.
 

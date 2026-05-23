@@ -1,8 +1,11 @@
+require("dotenv").config({ quiet: true });
+
 const http = require("http");
 const path = require("path");
 const { categorizeTicker } = require("./analyzer");
 const { processTxtContent } = require("./processor");
 const { getWatchStatus, startWatchFolder } = require("./watchService");
+const { getGeminiConfig, canUseGemini } = require("./geminiClient");
 const {
   createMarkdownExport,
   createTopMentionsCsv,
@@ -108,6 +111,10 @@ function layout(title, body) {
     .digest-badges { display:flex; flex-wrap:wrap; gap:4px; margin:10px 0 12px; }
     .digest-conclusion { background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:12px; line-height:1.68; margin:12px 0; max-width:none; }
     .digest-actions { margin-top:14px; }
+    .quick-card { display:block; border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; text-decoration:none; color:var(--ink); min-height:120px; }
+    .quick-card strong { display:block; font-size:17px; margin-bottom:8px; }
+    .quick-card span { display:block; color:var(--muted); line-height:1.6; }
+    .quick-card:hover { border-color:#94a3b8; box-shadow:0 8px 24px rgba(15,23,42,.08); }
     .section-card { border:1px solid var(--line); border-radius:8px; background:#fff; padding:22px; margin:18px 0; box-shadow:0 1px 0 rgba(15,23,42,.03); }
     .section-kicker { display:block; color:var(--accent); font-size:12px; font-weight:800; letter-spacing:.04em; margin-bottom:6px; }
     .section-card h3 { margin-top:0; }
@@ -222,7 +229,30 @@ function renderNoticeDisclosure() {
 
 function renderHome(message = "") {
   const uploads = storage.listUploads().slice(0, 5);
+  const geminiConfig = getGeminiConfig();
   return layout("TXT 업로드", `
+    <section>
+      <h2>바로가기</h2>
+      <div class="grid">
+        <a class="quick-card" href="/">
+          <strong>TXT 업로드</strong>
+          <span>카카오톡에서 내보낸 TXT 파일을 직접 업로드합니다.</span>
+        </a>
+        <a class="quick-card" href="/summaries">
+          <strong>날짜별 요약 보기</strong>
+          <span>저장된 날짜별 리포트와 Markdown/CSV 내보내기를 확인합니다.</span>
+        </a>
+        <a class="quick-card" href="/watch">
+          <strong>감시 폴더 상태</strong>
+          <span>watch 폴더 자동 처리, 성공/실패/중복 기록을 확인합니다.</span>
+        </a>
+        <a class="quick-card" href="/uploads">
+          <strong>업로드 기록</strong>
+          <span>웹 업로드와 watch 처리 결과를 업로드 단위로 확인합니다.</span>
+        </a>
+      </div>
+      <p class="muted">서버 주소: http://localhost:${PORT} · Gemini: ${canUseGemini(geminiConfig) ? "활성" : "비활성"} · 모델: ${escapeHtml(geminiConfig.model)}</p>
+    </section>
     <section>
       <h2>TXT 파일 업로드</h2>
       ${message}
@@ -474,6 +504,8 @@ function renderUploads() {
 function renderWatchStatus() {
   const status = getWatchStatus();
   const rows = status.recent || [];
+  const geminiConfig = getGeminiConfig();
+  const geminiActive = canUseGemini(geminiConfig);
   return layout("감시 폴더 상태", `
     <section>
       <div class="title-row">
@@ -481,12 +513,20 @@ function renderWatchStatus() {
         ${renderNoticeDisclosure()}
       </div>
       <p class="muted">이 기능은 카카오톡 자동 수집이 아니라, 로컬 폴더에 사용자가 넣은 TXT 파일을 자동 처리하는 방식입니다.</p>
+      <div class="soft-box">
+        <p><strong>사용 방법:</strong> watch 폴더에 카카오톡 TXT 파일을 넣으면 서버가 자동으로 파싱하고 날짜별 요약을 저장합니다.</p>
+        <p><strong>처리 완료:</strong> 성공한 파일은 watch/processed 폴더로 이동합니다.</p>
+        <p><strong>처리 실패:</strong> 실패한 파일은 watch/failed 폴더로 이동하고 실패 이유를 기록합니다.</p>
+        <p><strong>중복 파일:</strong> 이미 처리한 파일은 skipped_duplicate 상태로 기록합니다.</p>
+      </div>
       <div class="stats-grid">
         <div class="stat"><span>감시 폴더</span><strong>${escapeHtml(status.watchDir)}</strong></div>
         <div class="stat"><span>처리 완료</span><strong>${status.processedCount}</strong></div>
         <div class="stat"><span>중복 제외</span><strong>${status.duplicateCount}</strong></div>
         <div class="stat"><span>실패 파일</span><strong>${status.failedCount}</strong></div>
         <div class="stat"><span>마지막 처리</span><strong>${status.lastProcessedAt ? escapeHtml(new Date(status.lastProcessedAt).toLocaleString("ko-KR")) : "없음"}</strong></div>
+        <div class="stat"><span>Gemini 상태</span><strong>${geminiActive ? "활성" : "비활성"}</strong></div>
+        <div class="stat"><span>Gemini 모델</span><strong>${escapeHtml(geminiConfig.model)}</strong></div>
       </div>
       <div class="soft-box">
         <p><strong>처리 완료 폴더:</strong> ${escapeHtml(status.processedDir)}</p>
