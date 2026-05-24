@@ -69,8 +69,8 @@ function renderLayout(title, body, options = {}) {
     body { margin:0; font-family: Arial, "Malgun Gothic", sans-serif; color:var(--ink); background:var(--bg); }
     header { background:#111827; color:#fff; padding:18px 24px; box-shadow:0 10px 32px rgba(15,23,42,.18); }
     header h1 { margin:0; font-size:20px; letter-spacing:0; }
-    nav { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
-    nav a { color:#dbeafe; text-decoration:none; font-size:14px; border:1px solid transparent; border-radius:999px; padding:7px 10px; }
+    nav { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; max-width:100%; overflow-x:auto; padding-bottom:2px; -webkit-overflow-scrolling:touch; }
+    nav a { color:#dbeafe; text-decoration:none; font-size:14px; border:1px solid transparent; border-radius:999px; padding:7px 10px; flex:0 0 auto; }
     nav a:hover, nav a:focus { background:#1f2937; border-color:#334155; outline:none; }
     nav a.active { background:#fff; color:#111827; border-color:#fff; font-weight:800; }
     main { max-width:1120px; width:100%; margin:0 auto; padding:28px 24px; overflow-x:hidden; }
@@ -158,6 +158,7 @@ function renderLayout(title, body, options = {}) {
     .digest-conclusion { background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:12px; line-height:1.68; margin:12px 0; max-width:none; }
     .line-clamp { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
     .digest-actions { margin-top:14px; }
+    .digest-actions .button { white-space:nowrap; }
     .quick-card { display:block; border:1px solid var(--line); border-radius:8px; background:#fff; padding:18px; text-decoration:none; color:var(--ink); min-height:120px; }
     .quick-card strong { display:block; font-size:17px; margin-bottom:8px; }
     .quick-card span { display:block; color:var(--muted); line-height:1.6; }
@@ -171,7 +172,7 @@ function renderLayout(title, body, options = {}) {
     .status-pill { display:inline-flex; align-items:center; border-radius:999px; padding:4px 9px; font-size:12px; font-weight:700; border:1px solid var(--line); background:#f8fafc; }
     .status-pill.done { background:#ecfdf3; border-color:#bbf7d0; color:#166534; }
     .status-pill.missing { background:#fff7ed; border-color:#fed7aa; color:#9a3412; }
-    .ticker-list { display:grid; gap:12px; }
+    .ticker-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
     .ticker-row { display:grid; grid-template-columns:1fr auto; gap:14px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:14px; background:#fff; }
     .ticker-row strong { font-size:18px; }
     .ticker-meta { display:flex; flex-wrap:wrap; gap:8px; color:var(--muted); font-size:13px; margin-top:7px; }
@@ -980,6 +981,13 @@ function renderAnalyticsTopTickerTable(stats) {
   </table></div>`;
 }
 
+function renderAnalyticsDisclosure(title, body, open = false) {
+  return `<details class="analytics-disclosure"${open ? " open" : ""}>
+    <summary>${escapeHtml(title)}</summary>
+    <div class="details-body">${body}</div>
+  </details>`;
+}
+
 function renderAnalytics() {
   const summaries = storage.listSummaries();
   const uploads = storage.listUploads();
@@ -1022,26 +1030,26 @@ function renderAnalytics() {
       { label: "날짜 수", value: `${messageSeries.length}개` },
       { label: "최대 대화량", value: busiestText }
     ], renderAnalyticsMessageChart(messageSeries))}
-    ${renderSectionCard(2, "날짜별 시장 분위기", [
+    ${renderAnalyticsDisclosure("날짜별 시장 분위기 펼치기", renderSectionCard(2, "날짜별 시장 분위기", [
       { label: "분야", value: "시장 심리" },
       { label: "행 수", value: `${moodRows.length}개` },
       { label: "연결", value: `<a class="button outline" href="/summaries">요약 목록</a>`, html: true }
-    ], renderAnalyticsMoodTable(moodRows))}
-    ${renderSectionCard(3, "날짜별 TOP 종목 변화", [
+    ], renderAnalyticsMoodTable(moodRows)))}
+    ${renderAnalyticsDisclosure("날짜별 TOP 종목 변화 펼치기", renderSectionCard(3, "날짜별 TOP 종목 변화", [
       { label: "분야", value: "종목 변화" },
       { label: "기준", value: "날짜별 TOP 3" },
       { label: "연결", value: `<a class="button outline" href="/tickers">종목 추이</a>`, html: true }
-    ], renderAnalyticsDailyTopCards(dailyTopRows))}
-    ${renderSectionCard(4, "Gemini 상태 현황", [
+    ], renderAnalyticsDailyTopCards(dailyTopRows)))}
+    ${renderAnalyticsDisclosure("Gemini 상태 현황 펼치기", renderSectionCard(4, "Gemini 상태 현황", [
       { label: "분야", value: "AI 요약" },
       { label: "Gemini 생성", value: `${summary.geminiGeneratedDateCount || 0}개` },
       { label: "상태", value: renderBadge("Gemini", "gemini"), html: true }
-    ], renderAnalyticsGeminiTable(geminiRows))}
-    ${renderSectionCard(5, "전체 TOP 종목/자산 순위", [
+    ], renderAnalyticsGeminiTable(geminiRows)))}
+    ${renderAnalyticsDisclosure("전체 TOP 20 종목/자산 펼치기", renderSectionCard(5, "전체 TOP 종목/자산 순위", [
       { label: "분야", value: "랭킹" },
       { label: "표시 범위", value: "TOP 20" },
       { label: "최상위", value: topMentionText }
-    ], renderAnalyticsTopTickerTable(tickerStats))}
+    ], renderAnalyticsTopTickerTable(tickerStats)))}
   `);
 }
 
@@ -1437,7 +1445,13 @@ function feedbackFilterHref(rating) {
 }
 
 function renderFeedbackCards(feedbacks) {
-  if (!feedbacks.length) return `<p class="muted">조건에 맞는 피드백이 없습니다.</p>`;
+  if (!feedbacks.length) return `<div class="soft-box">
+    <p><strong>아직 저장된 피드백이 없습니다.</strong></p>
+    <p class="muted">날짜별 상세 요약 페이지 하단에서 요약 품질 평가를 남길 수 있습니다.</p>
+    <div class="button-row">
+      <a class="button" href="/summaries">날짜별 요약으로 이동</a>
+    </div>
+  </div>`;
   return `<div class="summary-card-grid">
     ${feedbacks.map((feedback) => `<article class="digest-card">
       <div class="digest-card-header">
